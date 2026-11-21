@@ -1,0 +1,52 @@
+{
+  "_doc": [
+    "Pinrose gallery room geometry, read from media/gallery.jpeg + media/gallery2.jpeg.",
+    "Units: centimetres. Plan frame: origin = where the west wall line meets the north wall line of the west (68 m2) section; +x = east (right on the plan), +y = south (down on the plan).",
+    "Each wall is a polyline along its MOUNTING FACE (the interior face, which is what the plan dimensions measure). 'side' says which side of the direction of travel that face looks into: 'right' or 'left' (in plan, y down). The wall body extends to the other side by 'thickness'.",
+    "kind: target = mounting wall of the Great Gallery (blue outline); optional = corridor wall, mountable only when the 'corridor walls' toggle is on; excluded = drawn for context, never mountable.",
+    "source: 'dimension' = length taken from a number written on the plan; 'plan-estimate' = position read off the drawing (no number on the plan) - CONFIRM ON SITE.",
+    "Distance-along-wall in the CSV export is measured from the FIRST point of the wall's polyline."
+  ],
+  "wallHeightCm": 350,
+  "defaultThicknessCm": 20,
+  "walls": [
+    { "id": "W-chamfer", "label": "NW diagonal (west section)", "kind": "target", "side": "right", "thickness": 25,
+      "points": [[0, 260], [260, 0]], "source": "dimension-derived",
+      "note": "Chamfer offsets = 860 (south run) - 600 (north run) = 260 cm on x; same 260 assumed on y (plan shows ~45 deg)." },
+    { "id": "N-west", "label": "North wall, west section", "kind": "target", "side": "right", "thickness": 25,
+      "points": [[260, 0], [860, 0]], "source": "dimension", "note": "600" },
+    { "id": "N-east", "label": "North wall, east section", "kind": "target", "side": "right", "thickness": 25,
+      "points": [[860, 0], [1854, 0]], "source": "dimension", "note": "994" },
+    { "id": "E", "label": "East wall", "kind": "target", "side": "right", "thickness": 25,
+      "points": [[1854, 0], [1854, 811]], "source": "dimension", "note": "811" },
+    { "id": "E-stub", "label": "East wall, south end (frame/door?)", "kind": "excluded", "side": "right", "thickness": 25,
+      "points": [[1854, 811], [1854, 874]], "source": "plan-estimate",
+      "note": "The black east wall continues ~60 cm past the end of the 811 dimension down to the slanted wall; a grey frame is drawn there. Treated as not mountable." },
+    { "id": "S-vitrine", "label": "South slanted wall (vitrine), east part", "kind": "target", "side": "right", "thickness": 10,
+      "points": [[1854, 874], [1345, 981]], "source": "plan-estimate",
+      "note": "Thin slanted wall (drawn as glazing/vitrine). Only the part east of where the blue outline cuts down is a target." },
+    { "id": "S-vitrine-foyer", "label": "South slanted wall, foyer part", "kind": "excluded", "side": "right", "thickness": 10,
+      "points": [[1345, 981], [871, 1081]], "source": "plan-estimate", "note": "Inside the excluded entry wedge." },
+    { "id": "X-storage-diag", "label": "Storage diagonal wall (foyer side)", "kind": "excluded", "side": "right", "thickness": 15,
+      "points": [[871, 1081], [610, 860]], "source": "plan-estimate", "note": "Between the foyer and the storage room." },
+    { "id": "X-240", "label": "Diagonal '240' wall (entry wedge)", "kind": "excluded", "side": "left", "thickness": 15,
+      "points": [[860, 570], [1030, 740]], "source": "dimension", "note": "240 cm long at ~45 deg, starting at the column on the west/east divider (start point plan-estimated)." },
+    { "id": "X-240-stub", "label": "Short wall at the end of the '240' wall", "kind": "excluded", "side": "left", "thickness": 15,
+      "points": [[1030, 740], [1130, 740]], "source": "plan-estimate", "note": "~1 m, no dimension on plan." },
+    { "id": "S-west", "label": "South wall, west section (storage wall)", "kind": "target", "side": "right", "thickness": 20,
+      "points": [[610, 860], [0, 860]], "source": "plan-estimate",
+      "note": "Gallery face of the wall shared with the storage room (מחסן). Length (610) read off the plan." },
+    { "id": "W-south", "label": "West wall, south of door", "kind": "target", "side": "right", "thickness": 25,
+      "points": [[0, 860], [0, 490]], "source": "plan-estimate", "note": "Door/opening assumed between y=400 and y=490." },
+    { "id": "W-north", "label": "West wall, north of door", "kind": "target", "side": "right", "thickness": 25,
+      "points": [[0, 400], [0, 260]], "source": "plan-estimate", "note": "" },
+    { "id": "C-corridor", "label": "Corridor wall east of the gallery (optional)", "kind": "optional", "side": "right", "thickness": 15,
+      "points": [[1854, 874], [2200, 874]], "source": "plan-estimate",
+      "note": "Grey wall continuing east from the SE corner, inside the blue outline. Not confirmed as a mounting wall; face assumed to be the south (corridor) side." }
+  ],
+  "dividers": [
+    { "id": "divider", "label": "West/East section divider (dashed on plan, not a wall)", "points": [[860, 0], [860, 570]] }
+  ],
+  "floorPolygon": [[0, 260], [260, 0], [1854, 0], [1854, 874], [871, 1081], [610, 860], [0, 860]],
+  "labelledAreasM2": { "west": 68, "east": 85 }
+}

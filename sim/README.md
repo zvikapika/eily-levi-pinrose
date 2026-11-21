@@ -93,6 +93,8 @@ If the v2 STLs are modelled with a different origin or orientation than v1, upda
 transforms at the top of `build_unit_glb.py` (`CUP`, `COVER_DEPTH`, `RING_CENTER`, `m_cover`/`m_bracket`/`m_ring`).
 The sim code stays the same, because the funnel pivot is read from the ring's back face at load time. The funnel itself is
 procedural (`makeFunnelGeometry` in `src/units.js`).
+The current `cad/out/` v2 parts (`pinrus_v2.stl`, `pinruswall_v2.stl`, `pinruso.stl`) use the same frames as v1 and
+build through the script unchanged (checked). The committed `unit.glb` is still v1 from `3d/`.
 To check a new GLB, look at the close-up in docs/05-unit-closeup.png.
 
 ## Reading of the floor plan: please confirm

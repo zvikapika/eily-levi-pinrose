@@ -1,0 +1,69 @@
+{
+ "cover_features": [
+  "bulkhead",
+  "saddle0",
+  "saddle1",
+  "rear_stop",
+  "boss-1",
+  "boss+1",
+  "fin0",
+  "fin1",
+  "journal+1",
+  "journal-1",
+  "catch-1",
+  "catch+1"
+ ],
+ "filled_holes": [
+  {
+   "area": 186.5,
+   "centroid_cover_frame": [
+    -43.24,
+    118.74
+   ]
+  },
+  {
+   "area": 1833.7,
+   "centroid_cover_frame": [
+    -44.08,
+    13.59
+   ]
+  }
+ ],
+ "snap_y": 19.0,
+ "derived": {
+  "zA": 15.0,
+  "y_bh0": 54.0,
+  "cpl0": 39.0,
+  "cpl1": 53.0,
+  "y_rear": 112.0,
+  "near_j": 38.0,
+  "far_j": -6.5,
+  "journal_z": 14.1
+ },
+ "bracket_to_cover": [
+  [
+   0.99863,
+   -0.052336,
+   0.0,
+   64.401704
+  ],
+  [
+   -0.052336,
+   -0.99863,
+   0.0,
+   137.586122
+  ],
+  [
+   0.0,
+   0.0,
+   -1.0,
+   50.0
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ]
+}

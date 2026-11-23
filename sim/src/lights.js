@@ -80,6 +80,12 @@ export class Lighting {
   }
   applyAll() { this.spots.forEach((s) => this.apply(s)); }
   setZone(id, patch) { Object.assign(this.zones[id], patch); this.applyAll(); }
+  // darken one space: its lights off + the shared ambient/sky fill turned down (the other space keeps its spots)
+  setDark(on) {
+    if (on && !this._saved) { this._saved = { amb: this.ambient.intensity, inner: { ...this.zones.inner } }; this.setAmbient(0.04); this.setZone('inner', { on: false }); }
+    if (!on && this._saved) { this.setAmbient(this._saved.amb); this.setZone('inner', { on: this._saved.inner.on }); this._saved = null; }
+    this.dark = on;
+  }
   addSpot(zone) {
     const c = zone === 'inner' ? { x: 430, y: 430, aimX: 430, aimY: 0 } : { x: 1350, y: 430, aimX: 1350, aimY: 0 };
     this.setSpots([...this.spots.map((s) => s.p), { on: true, ...c, aimH: 170, intensity: 35, kelvin: 3500, angle: 60, penumbra: 0.7 }]);

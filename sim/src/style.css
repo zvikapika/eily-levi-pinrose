@@ -48,3 +48,4 @@ button:hover { background: #3d424a; }
 button.hi { background: var(--acc); color: #1b1b1b; border-color: var(--acc); font-weight: 600; }
 button.mini { padding: 0 5px; margin-left: 6px; font-size: 10px; line-height: 16px; }
 .wall-label.glass { background: rgba(86,204,242,.9); color: #10303a; }
+.row.chk.big { font-size: 13.5px; padding: 3px 0; }

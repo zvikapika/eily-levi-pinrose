@@ -147,3 +147,6 @@ That leaves plenty of headroom for 60 fps.
 - **Unit LEDs:** an LED inside each unit, for the inner space only, with colour and level.
 - **Export 3D (STL):** a static snapshot of the whole space in mm, Z up, for SketchUp. SketchUp for Web imports STL only with a subscription; the free plan imports .skp only.
 - **Single-file build:** `bash tools/build_single.sh` → `dist-single/pinrose_gallery_sim.html`, which opens from disk with no server.
+- **One-wall view (key `4`, "One wall"):** a straight-on orthographic view of one wall, framed to fit it. The camera's near plane clips everything more than 70 cm in front of that wall, so only its units and lines show. ◀ ▶ (or `[` `]`) go to the next wall, and double-clicking a wall in the overview opens it here. Units can be dragged and lines drawn in this view, just like in the overview. `1` returns to the overview.
+- **Inner space quick controls** (second panel section): turn on the LEDs inside the units and darken the inner room (its lights off + the shared fill light turned down).
+- **Unit colour:** units stay white when their motor is off; the locator dots still show on/off.

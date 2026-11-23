@@ -20,7 +20,7 @@ export const UNIT_PARAMS = {
 const COLORS = {
   normal: new THREE.Color(0xf6f4ef),
   selected: new THREE.Color(0xff8a3d),
-  off: new THREE.Color(0x8c8c8c),
+  off: new THREE.Color(0xf6f4ef), // units stay white when their motor is off (Eily); the locator dots show on/off
   markerNormal: new THREE.Color(0x1f6fd1),
   markerSelected: new THREE.Color(0xff6a00),
   markerOff: new THREE.Color(0x888888),

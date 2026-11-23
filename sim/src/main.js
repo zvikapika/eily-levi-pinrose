@@ -68,6 +68,16 @@ planCtl.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
 planCtl.enabled = false;
 planCtl.update();
 const walk = new PointerLockControls(persp, renderer.domElement);
+// front (elevation) view of one wall: orthographic camera facing the wall; the near plane clips everything more than
+// WALL_SLAB m in front of the wall, so only that wall, its units and its grid lines show
+const WALL_SLAB = 0.7, WALL_CAM_D = 30;
+const elev = new THREE.OrthographicCamera(-1, 1, 1, -1, WALL_CAM_D - WALL_SLAB, WALL_CAM_D + 0.4);
+const elevCtl = new OrbitControls(elev, renderer.domElement);
+elevCtl.enableRotate = false;
+elevCtl.screenSpacePanning = true;
+elevCtl.mouseButtons = { LEFT: -1, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+elevCtl.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
+elevCtl.enabled = false;
 let walkPose = { pos: new THREE.Vector3(9.3, EYE_HEIGHT_CM * CM, 6.8), yaw: Math.PI * 0.82, pitch: 0 };
 let orbitPose = null;
 
@@ -95,7 +105,7 @@ const app = {
   draw: { on: false, start: null, step: 5, snapUnits: true }, setDraw, deleteSelectedLine, onLinesChanged: null,
   setAllMotors, editProfiles, exportSTL,
   setUnitDots(v) { app.unitDots = v; units.dots.visible = v && app.mode === 'overview'; },
-  setMode, select, editSelected, setUnits, loadLayout, autosave, toast,
+  setMode, select, editSelected, viewWall, wallList, currentWall: null, setUnits, loadLayout, autosave, toast,
   setCeiling(v) { ceilingUser = v; applyCeiling(); },
   setLabels(v) { app.labelsOn = v; showLabels(); },
   setWallHeight(v) {
@@ -258,8 +268,9 @@ function deleteSelectedLine() {
 // surface under the cursor: a mountable wall face or the floor -> {surf, uv}
 function surfaceHit(x, y) {
   ray.setFromCamera(toNDC(x, y), activeCam());
-  const targets = [...room.wallMeshes.filter((m) => m.visible && m.material !== room.ghostMat && room.mountable(room.wall(m.userData.wallId))), room.floorMesh];
-  const hits = ray.intersectObjects(targets, false);
+  const targets = app.mode === 'wall' ? [...room.wallMeshes.filter((m) => m.userData.wallId === app.currentWall), room.floorMesh]
+    : [...room.wallMeshes.filter((m) => m.visible && m.material !== room.ghostMat && room.mountable(room.wall(m.userData.wallId))), room.floorMesh];
+  const hits = ray.intersectObjects(targets, false).filter((h) => app.mode !== 'wall' || h.distance > WALL_CAM_D - WALL_SLAB);
   if (!hits.length) return null;
   const h = hits[0];
   const surf = h.object === room.floorMesh ? 'FLOOR' : h.object.userData.wallId;
@@ -316,7 +327,7 @@ function drawMove(e) {
 }
 function pickLine(x, y) {
   ray.setFromCamera(toNDC(x, y), activeCam());
-  const hits = ray.intersectObjects(grid.lineMeshes, false);
+  const hits = ray.intersectObjects(grid.lineMeshes, false).filter((h) => app.mode !== 'wall' || h.distance > WALL_CAM_D - WALL_SLAB);
   return hits.length ? hits[0].object.userData.lineId : null;
 }
 function exportSTL() {
@@ -368,6 +379,8 @@ function setMode(m) {
   app.mode = m;
   orbit.enabled = m === 'overview';
   planCtl.enabled = m === 'plan';
+  elevCtl.enabled = m === 'wall';
+  if (m === 'wall' && !app.currentWall) app.currentWall = wallList()[0];
   units.setPlanMarkersVisible(m === 'plan');
   units.dots.visible = m === 'overview' && app.unitDots;
   room.setOverlayVisible(m === 'plan');
@@ -385,6 +398,7 @@ function setMode(m) {
   applyCeiling();
   ui.setMode(m);
   onResize();
+  if (m === 'wall') viewWall(app.currentWall);
 }
 
 // ------------------------------------------------------------------ input
@@ -396,6 +410,9 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Digit1') setMode('overview');
     if (e.code === 'Digit2') setMode('walk');
     if (e.code === 'Digit3') setMode('plan');
+    if (e.code === 'Digit4') setMode('wall');
+    if (app.mode === 'wall' && (e.code === 'BracketRight' || e.code === 'PageDown')) stepWall(1);
+    if (app.mode === 'wall' && (e.code === 'BracketLeft' || e.code === 'PageUp')) stepWall(-1);
     if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA') { e.preventDefault(); select([...units.units.keys()]); }
     if (e.code === 'KeyL') setDraw(!app.draw.on);
     if (e.code === 'Escape' && app.draw.on) { if (app.draw.start) { app.draw.start = null; grid.setPreview(null); } else setDraw(false); }
@@ -408,7 +425,33 @@ addEventListener('blur', () => Object.keys(keys).forEach((k) => (keys[k] = false
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 const tmpV = new THREE.Vector3();
-const activeCam = () => (app.mode === 'plan' ? ortho : persp);
+const activeCam = () => (app.mode === 'plan' ? ortho : app.mode === 'wall' ? elev : persp);
+function wallList() { return room.mountableWalls().map((w) => w.id); }
+function stepWall(d) {
+  const L = wallList(), i = L.indexOf(app.currentWall);
+  viewWall(L[(i + d + L.length) % L.length]);
+}
+// look straight at one wall, framed to fit it
+function viewWall(id) {
+  const w = room.wall(id);
+  if (!w) return;
+  app.currentWall = id;
+  const g = w.segs[0];
+  const mid = room.pointAt(w, w.length / 2);
+  const H = room.wallHeight * CM;
+  const c = new THREE.Vector3(mid.x * CM, H / 2, mid.y * CM);
+  const n = new THREE.Vector3(g.n[0], 0, g.n[1]);
+  elev.position.copy(c).addScaledVector(n, WALL_CAM_D);
+  elev.up.set(0, 1, 0);
+  elev.lookAt(c);
+  elevCtl.target.copy(c);
+  elev.zoom = 1;
+  app._wallFit = { len: w.length * CM + 1.0, h: H + 0.8 };
+  if (app.mode !== 'wall') setMode('wall');
+  onResize();
+  elevCtl.update();
+  ui.setWall?.(id);
+}
 function toNDC(x, y) {
   const r = renderer.domElement.getBoundingClientRect();
   return ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
@@ -420,7 +463,10 @@ function pick(x, y, tol = 14) {
   let maxDist = Infinity;
   if (app.mode !== 'plan') {
     ray.setFromCamera(toNDC(x, y), cam);
-    const hits = ray.intersectObjects([units.cover, units.bracket, units.funnel, ...room.wallMeshes.filter((m) => m.visible && m.material !== room.ghostMat)], false);
+    const blockers = app.mode === 'wall' ? room.wallMeshes.filter((m) => m.userData.wallId === app.currentWall)
+      : room.wallMeshes.filter((m) => m.visible && m.material !== room.ghostMat);
+    const hits = ray.intersectObjects([units.cover, units.bracket, units.funnel, ...blockers], false)
+      .filter((h) => app.mode !== 'wall' || h.distance > WALL_CAM_D - WALL_SLAB);
     if (hits.length) {
       if (hits[0].object.isInstancedMesh && !units.units[hits[0].instanceId]?.hidden) return hits[0].instanceId;
       maxDist = hits[0].distance + 0.1; // a wall is in front: only units before it are pickable
@@ -431,6 +477,7 @@ function pick(x, y, tol = 14) {
   const rel = new THREE.Vector3();
   for (let i = 0; i < units.units.length; i++) {
     if (units.units[i].hidden) continue;
+    if (app.mode === 'wall' && units.units[i].wall !== app.currentWall) continue;
     let p;
     if (app.mode === 'plan') {
       units.markers.getMatrixAt(i, _mm);
@@ -473,6 +520,13 @@ addEventListener('pointerdown', (e) => {
     down.box = true;
   }
 }, { capture: true });
+
+canvas.addEventListener('dblclick', (e) => {
+  if (app.mode !== 'overview' || app.draw.on) return;
+  ray.setFromCamera(toNDC(e.clientX, e.clientY), persp);
+  const hits = ray.intersectObjects(room.wallMeshes.filter((m) => m.visible && m.material !== room.ghostMat && room.mountable(room.wall(m.userData.wallId))), false);
+  if (hits.length) viewWall(hits[0].object.userData.wallId);
+});
 
 addEventListener('pointermove', (e) => {
   if (app.draw.on && e.target === canvas) drawMove(e);
@@ -559,6 +613,12 @@ function onResize() {
   const half = Math.max(rw / 2, (rh / 2) * (w / hgt));
   ortho.left = -half; ortho.right = half; ortho.top = half * (hgt / w); ortho.bottom = -half * (hgt / w);
   ortho.updateProjectionMatrix();
+  if (app._wallFit) {
+    const { len, h } = app._wallFit;
+    const hw = Math.max(len / 2, (h / 2) * (w / hgt));
+    elev.left = -hw; elev.right = hw; elev.top = hw * (hgt / w); elev.bottom = -hw * (hgt / w);
+    elev.updateProjectionMatrix();
+  }
 }
 addEventListener('resize', onResize);
 
@@ -583,6 +643,7 @@ function tick(now) {
       persp.position.set(nx * CM, EYE_HEIGHT_CM * CM, ny * CM);
     }
   } else if (app.mode === 'overview') orbit.update();
+  else if (app.mode === 'wall') elevCtl.update();
   else planCtl.update();
   units.animate(dt);
   partitions.update(dt);
@@ -613,7 +674,7 @@ function tick(now) {
 })();
 
 // test / console hooks
-window.__sim = { app, grid, partitions, surfaceHit, snapUV, THREE, scene, persp, ortho, orbit, walk, units, room, lighting, setMode, select, mulberry32, renderer,
+window.__sim = { app, grid, partitions, elev, viewWall, surfaceHit, snapUV, THREE, scene, persp, ortho, orbit, walk, units, room, lighting, setMode, select, mulberry32, renderer,
   // benchmark helper: n synchronous animate+render passes, returns ms per frame (includes GPU via readPixels sync)
   bench(n = 60) {
     const gl = renderer.getContext(), px = new Uint8Array(4);

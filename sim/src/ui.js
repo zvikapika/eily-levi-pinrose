@@ -47,7 +47,14 @@ export function buildUI(app) {
     const s = section('View');
     const btns = {};
     const bar = h('div', { class: 'seg' },
-      ...['overview', 'walk', 'plan'].map((m) => (btns[m] = h('button', { onclick: () => app.setMode(m), title: `key ${['overview', 'walk', 'plan'].indexOf(m) + 1}` }, m[0].toUpperCase() + m.slice(1)))));
+      ...['overview', 'walk', 'plan', 'wall'].map((m) => (btns[m] = h('button', { onclick: () => app.setMode(m), title: `key ${['overview', 'walk', 'plan', 'wall'].indexOf(m) + 1}` }, { overview: 'All (overview)', walk: 'Walk', plan: 'Plan', wall: 'One wall' }[m]))));
+    const wallPick = h('select', { onchange: () => app.viewWall(wallPick.value) });
+    for (const id of app.wallList()) { const w = room.wall(id); wallPick.append(h('option', { value: id }, `${id} — ${w.label} (${Math.round(w.length)} cm)`)); }
+    const wallRow = h('div', { class: 'row' },
+      h('button', { onclick: () => { const L = app.wallList(); app.viewWall(L[(L.indexOf(app.currentWall ?? L[0]) - 1 + L.length) % L.length]); }, title: 'previous wall ( [ )' }, '◀'),
+      wallPick,
+      h('button', { onclick: () => { const L = app.wallList(); app.viewWall(L[(L.indexOf(app.currentWall ?? L[L.length - 1]) + 1) % L.length]); }, title: 'next wall ( ] )' }, '▶'));
+    ui.setWall = (id) => { wallPick.value = id; };
     const help = h('div', { class: 'help' });
     ui.setMode = (m) => {
       for (const [k, b] of Object.entries(btns)) b.classList.toggle('on', k === m);
@@ -55,16 +62,33 @@ export function buildUI(app) {
         overview: 'Drag: orbit · right-drag: pan · wheel: zoom · click a unit: select (shift/ctrl: add) · drag a unit: slide it along the walls',
         walk: 'Click the view to look around (pointer lock) · WASD/arrows: walk · shift: faster · click: select the unit under the cross · Esc: release mouse',
         plan: 'Drag on empty floor: box select (shift: add) · click/shift-click a dot: select · drag a dot: slide along walls · right-drag: pan · wheel: zoom',
+        wall: 'Front view of one wall: drag units on it · draw lines (L) · right-drag: pan · wheel: zoom · ◀ ▶ or [ ] = next wall · 1 = see everything again · tip: double-click a wall in the overview to open it here',
       }[m];
     };
     const ceil = h('input', { type: 'checkbox', onchange: (e) => app.setCeiling(e.target.checked) });
     ui.ceiling = ceil;
-    s.body.append(bar, help,
+    s.body.append(bar, wallRow, help,
       h('label', { class: 'row chk' }, ceil, ' Ceiling (auto in walk mode)'),
       h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => (app.cutaway = e.target.checked) }), ' Cutaway: see through walls facing away (overview)'),
       h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => app.setUnitDots(e.target.checked) }), ' Locator dots behind units (overview)'),
       h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => app.setLabels(e.target.checked) }), ' Wall labels in plan view'),
     );
+    panel.append(s.el);
+  }
+
+  // ---------------------------------------------------------------- inner space quick controls
+  {
+    const s = section('Inner space — LEDs & darkness');
+    const L = units.led;
+    const ledOn = h('input', { type: 'checkbox', checked: L.on, onchange: (e) => { units.setLed({ on: e.target.checked }); app.autosave(); } });
+    const dark = h('input', { type: 'checkbox', checked: !!lighting.dark, onchange: (e) => { lighting.setDark(e.target.checked); app.autosave(); } });
+    s.body.append(
+      h('label', { class: 'row chk big' }, ledOn, ' 💡 LED inside the units (inner room only)'),
+      h('label', { class: 'row chk big' }, dark, ' 🌑 Darken the inner room'),
+      h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'LED colour'), h('input', { type: 'color', value: L.colour, oninput: (e) => units.setLed({ colour: e.target.value }) })),
+      numRow('LED level', { min: 0, max: 2, step: 0.01, value: L.intensity, onChange: (v) => units.setLed({ intensity: v }) }).row,
+      h('div', { class: 'help' }, 'More control (each space\'s dimmer, colour temperature, track lights) is in Lighting below.'));
+    ui.innerQuick = { ledOn, dark };
     panel.append(s.el);
   }
 

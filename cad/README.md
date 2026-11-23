@@ -110,3 +110,9 @@ The v2–v4 standing snap tab broke at its root when Eily pulled the cover off. 
 - **Invisible from outside:** the cover's outer skin is untouched. The groove leaves 1.0 mm of wall and stops 1 mm below the rim. The finger is in the bracket, which sits against the wall.
 - **Printable:** both parts print without supports. The bump overhang is 32°, and the groove top is a 0.6 mm bridge.
 - `scripts/snap_detail_v5.py` → `out_v5/pinrose_v5_snap_detail.png`. `checks_v5.py`: ALL_OK, no clashes at the seat, and the wall left at the grooves is 1.00 / 1.01 mm.
+
+## v6 — captive nuts + 30 mm cup (`pinrose_v6.py`, output `out_v6/`, `bash scripts/run_all_v6.sh`)
+- **Bosses:** the Ø8 strap bosses split when Eily tightened the self-tapping M3. There is no thread in plastic any more. Each of the 4 bosses is now Ø10, with a Ø3.3 clearance hole down to z 7 and a side slot for a captive **M3 hex nut**. The slot is 5.9 wide and 2.8 tall at z 9.6–12.4, leaving 2.6 mm of boss above the nut. The strap 1 slots open toward the cup (the gap to strap 2 is only 5 mm); the strap 2 slots open toward the tip.
+- **Hardware per unit:** 4× M3 × 10 screws + 4× M3 nuts. Slide each nut into its slot before fitting the motor.
+- **Cup** (the inner cylinder holding the crank shaft): 30 mm tall from the front face (was 20), slits included.
+- `checks_v6.py`: ALL_OK, 0 clashes. Rays confirm the screw holes are open to z 7, the slots are open on their side, and the cup top is at z 30. Detail: `out_v6/pinrose_v6_nut_detail.png`.

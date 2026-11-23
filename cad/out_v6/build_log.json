@@ -1,0 +1,93 @@
+{
+ "scale_xy": 1.03,
+ "scale_origin": [
+  -43.265,
+  15.485
+ ],
+ "wall_thickness_v2_min_max": [
+  0.617,
+  2.097
+ ],
+ "wall_thickness_v6_min_max": [
+  1.6,
+  1.6
+ ],
+ "outer_v2_extents": [
+  80.0,
+  161.0
+ ],
+ "outer_v6_extents": [
+  81.6,
+  166.03
+ ],
+ "nut_slots": {
+  "boss_d": 10.0,
+  "slot_z": [
+   9.6,
+   12.4
+  ],
+  "screw": "M3 x 10",
+  "opens": "strap 1: -y (toward the cup), strap 2: +y (toward the tip)"
+ },
+ "cover_features": [
+  "saddle0",
+  "saddle1",
+  "journal+1",
+  "journal-1",
+  "saddle0_2",
+  "nutboss-1@66",
+  "nutboss+1@66",
+  "nutboss-1@81",
+  "nutboss+1@81",
+  "groove-1",
+  "groove+1"
+ ],
+ "snap_y": 19.25,
+ "snap": {
+  "finger_mm": [
+   20.0,
+   3.0,
+   3.0
+  ],
+  "engagement_mm": 0.5,
+  "strain_pct": 0.56,
+  "spring_force_N_per_side": 4.4,
+  "old_tab_strain_pct": 1.1
+ },
+ "derived": {
+  "zA": 15.0,
+  "y_bh0": 54.0,
+  "cpl0": 39.0,
+  "cpl1": 53.0,
+  "y_rear": 112.0,
+  "near_j": 38.0,
+  "far_j": -6.5,
+  "journal_z": 14.1
+ },
+ "bracket_to_cover": [
+  [
+   0.99863,
+   -0.052336,
+   0.0,
+   64.401704
+  ],
+  [
+   -0.052336,
+   -0.99863,
+   0.0,
+   137.586122
+  ],
+  [
+   0.0,
+   0.0,
+   -1.0,
+   50.0
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ]
+}

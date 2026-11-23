@@ -1,0 +1,403 @@
+{
+ "stl": {
+  "pinrus_v6.stl": {
+   "watertight": true,
+   "bodies": 1,
+   "non_manifold_edges": 0,
+   "volume": 60520.6,
+   "size": [
+    81.6,
+    166.03,
+    50.0
+   ]
+  },
+  "pinruswall_v6.stl": {
+   "watertight": true,
+   "bodies": 1,
+   "non_manifold_edges": 0,
+   "volume": 24834.9,
+   "size": [
+    79.55,
+    162.63,
+    14.0
+   ]
+  },
+  "motor_strap_v6.stl": {
+   "watertight": true,
+   "bodies": 1,
+   "non_manifold_edges": 0,
+   "volume": 1283.1,
+   "size": [
+    40.0,
+    13.0,
+    10.0
+   ]
+  },
+  "pinruso.stl": {
+   "watertight": true,
+   "bodies": 1,
+   "non_manifold_edges": 0,
+   "volume": 844.2,
+   "size": [
+    40.3,
+    40.3,
+    3.0
+   ]
+  }
+ },
+ "interference": {
+  "coverxbracket": {
+   "vol": 0.912,
+   "sliver": 0.003,
+   "status": "clear"
+  },
+  "coverxstrap": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "coverxstrap2": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "coverxring": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "coverxmotor": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "coverxcoupler_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "coverxcrank_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxstrap": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxstrap2": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxring": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxmotor": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxcoupler_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxcrank_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "strapxstrap2": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "strapxring": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "strapxmotor": {
+   "vol": 0.21,
+   "sliver": 0.001,
+   "status": "clear"
+  },
+  "strapxcoupler_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "strapxcrank_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "strap2xring": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "strap2xmotor": {
+   "vol": 0.21,
+   "sliver": 0.001,
+   "status": "clear"
+  },
+  "strap2xcoupler_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "strap2xcrank_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "ringxmotor": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "ringxcoupler_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "ringxcrank_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "motorxcoupler_sweep": {
+   "vol": 106.77,
+   "sliver": 1.619,
+   "status": "allowed (part inside part by design)"
+  },
+  "motorxcrank_sweep": {
+   "vol": 3.015,
+   "sliver": 0.522,
+   "status": "allowed (part inside part by design)"
+  },
+  "coupler_sweepxcrank_sweep": {
+   "vol": 14.069,
+   "sliver": 0.718,
+   "status": "allowed (part inside part by design)"
+  }
+ },
+ "clearance": {
+  "wall_thickness_min_max": [
+   1.6,
+   1.6
+  ],
+  "inner_rim_same_as_v3": true,
+  "motor_to_v6_shell(walls+front)": [
+   1.003,
+   [
+    -42.89,
+    71.23,
+    4.0
+   ]
+  ],
+  "motor_to_bracket": [
+   15.887,
+   [
+    -49.89,
+    78.13,
+    23.57
+   ]
+  ],
+  "coupler_sweep_to_cover_v6": [
+   1.0,
+   [
+    -43.01,
+    39.0,
+    10.69
+   ]
+  ],
+  "coupler_sweep_to_strap": [
+   10.307,
+   [
+    -44.61,
+    53.0,
+    19.2
+   ]
+  ],
+  "crank_sweep_to_cup_wall(throw zone)": 1.138,
+  "throw_corner_radius_in_cup_plan": 14.494,
+  "throw_radial_clearance_to_cup_ID(analytic)": 5.746,
+  "crank_sweep_z_range": [
+   8.2,
+   21.8
+  ],
+  "journal_bottom_z": 14.1,
+  "journal_radial_play_each_side": 0.54,
+  "coupler_axial_gap_to_cup_OD": 1.0,
+  "bulkhead": "removed (C); motor located axially by the strap clamp + saddles only",
+  "shaft_engagement_in_coupler": 8.5,
+  "interior_width_at_motor_end": 27.1,
+  "motor_side_clearance_at_end": 2.262,
+  "motor_to_front_face": 1.0,
+  "motor_top_to_bracket_inner_face": 21.0,
+  "strap_top_to_bracket": 7.504,
+  "strap_to_bracket_min": [
+   14.534,
+   [
+    -51.95,
+    70.94,
+    25.11
+   ]
+  ],
+  "ring_OD_measured": 40.3,
+  "ring_position_z": [
+   -0.0,
+   3.0
+  ],
+  "ring_radial_clearance_in_front_opening": 0.355,
+  "crank_sweep_bottom_above_ring_top": 5.2,
+  "ring_to_crank_wire": [
+   7.198,
+   [
+    -42.4,
+    -2.24,
+    2.98
+   ]
+  ]
+ },
+ "insertion_motor_unit_from_back": {
+  "max_clash_vol": 0.0,
+  "status": "clear"
+ },
+ "bracket_insertion_overlap_by_dz(snap ride-over expected while dz < bump travel)": {
+  "0.3": 1.318,
+  "1": 4.328,
+  "2": 3.872,
+  "4": 0.0,
+  "6": 0.0,
+  "10": 0.0,
+  "14": 0.0
+ },
+ "rays": {
+  "gate_slot_through_bracket": [],
+  "wall_screw_hole_y15.5": [],
+  "wall_screw_hole_y95.0": [],
+  "strap2_insert_hole_-1_hits_from_top(z)": [
+   7.0,
+   -0.0
+  ],
+  "insert_hole_-1_hits_from_top(z)": [
+   7.0,
+   -0.0
+  ],
+  "strap2_insert_hole_+1_hits_from_top(z)": [
+   7.0,
+   -0.0
+  ],
+  "insert_hole_+1_hits_from_top(z)": [
+   7.0,
+   -0.0
+  ],
+  "front_opening_at_cup_centre(z hits cover)": [],
+  "back_closed_behind_cup(z hits bracket, 8 mm off the screw hole)": [
+   47.0,
+   50.0
+  ],
+  "back_closed_behind_cup_tip_side": [
+   47.0,
+   50.0
+  ],
+  "back_closed_at_old_small_hole": [
+   47.0,
+   50.0
+  ],
+  "cup_wall_top_z(ray down at cup OD-1)": [
+   30.0
+  ],
+  "outer_size_xy": [
+   81.6,
+   166.03
+  ],
+  "journal+1_bottom_z": [
+   14.1
+  ],
+  "journal-1_bottom_z": [
+   14.1
+  ]
+ },
+ "ALL_OK": true,
+ "snap_v5": {
+  "groove-1_ray_hits(x along ray)": [
+   -83.79,
+   -82.79,
+   -3.2
+  ],
+  "groove-1_wall_left_mm": 1.0,
+  "finger-1_ray_hits(plate)": [
+   78.18,
+   79.18,
+   82.5
+  ],
+  "groove+1_ray_hits(x along ray)": [
+   2.19,
+   3.2,
+   82.79
+  ],
+  "groove+1_wall_left_mm": 1.01,
+  "finger+1_ray_hits(plate)": [
+   -7.81,
+   -6.8,
+   -3.48
+  ],
+  "outer_skin_untouched": true,
+  "numbers": {
+   "finger_mm": [
+    20.0,
+    3.0,
+    3.0
+   ],
+   "engagement_mm": 0.5,
+   "strain_pct": 0.56,
+   "spring_force_N_per_side": 4.4,
+   "old_tab_strain_pct": 1.1
+  }
+ },
+ "v6": {
+  "screw_axis_-1@66(z hits down)": [
+   7.0,
+   -0.0
+  ],
+  "slot_open_-1@66(hits along slot)": [
+   69.38,
+   71.0
+  ],
+  "screw_axis_+1@66(z hits down)": [
+   7.0,
+   -0.0
+  ],
+  "slot_open_+1@66(hits along slot)": [
+   69.38,
+   71.0
+  ],
+  "screw_axis_-1@81(z hits down)": [
+   7.0,
+   -0.0
+  ],
+  "slot_open_-1@81(hits along slot)": [
+   -77.62,
+   -76.0
+  ],
+  "screw_axis_+1@81(z hits down)": [
+   7.0,
+   -0.0
+  ],
+  "slot_open_+1@81(hits along slot)": [
+   -77.62,
+   -76.0
+  ],
+  "cup_top_z": [
+   30.0
+  ]
+ }
+}

@@ -100,3 +100,13 @@ Letters refer to her marked screenshot of the cover seen from the open back.
   (y 100): the interior half-width there is ~17 mm, and the bosses need 20. The strap ears sit ≥ 0.6 mm from the walls.
 - Hardware per unit: 4× M3 × 8, self-tapping straight into the bosses (Ø2.5 pilot holes, `SELF_TAP_HOLE_D`, no heat-set inserts per Eily).
 - `checks_v4.py`: walls 1.600/1.600 mm, all printables watertight / 1 body, 0 clashes, motor ≥ 1.0 mm, ALL_OK.
+
+## v5 — durable, hidden snap (`pinrose_v5.py`, output `out_v5/`, `bash scripts/run_all_v5.sh`)
+The v2–v4 standing snap tab broke at its root when Eily pulled the cover off. It was printed upright, so the layers ran across the bend.
+- **Tabs and catches removed:** the standing tabs on the bracket and the catch blocks on the cover are gone.
+- **New snap (one per side, at the widest point):** a spring finger is cut into the bracket plate edge (20 × 3 mm in plan, 3 mm plate, 1 mm slot). It is printed flat, so the layers run along the finger.
+- **Bump and groove:** a 0.5 mm bump at the finger's free end, with ~32° ramps both ways, clicks into a 0.6 mm groove in the cover's inner wall. The groove runs from z 46.5 to 49. The 1 mm lip up to the rim holds the bump.
+- **Numbers:** bending strain is 0.56 % at full deflection (the old tab was 1.1 %; PLA yields at ~2–3 %), and the spring force is ~4.4 N per side. It is made for repeated opening and closing.
+- **Invisible from outside:** the cover's outer skin is untouched. The groove leaves 1.0 mm of wall and stops 1 mm below the rim. The finger is in the bracket, which sits against the wall.
+- **Printable:** both parts print without supports. The bump overhang is 32°, and the groove top is a 0.6 mm bridge.
+- `scripts/snap_detail_v5.py` → `out_v5/pinrose_v5_snap_detail.png`. `checks_v5.py`: ALL_OK, no clashes at the seat, and the wall left at the grooves is 1.00 / 1.01 mm.

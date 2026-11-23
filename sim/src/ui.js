@@ -100,7 +100,12 @@ export function buildUI(app) {
 
     // properties
     const props = h('div', { class: 'props' });
-    const moveWall = h('select', { onchange: () => app.editSelected((u) => { u.wall = moveWall.value; }) });
+    const moveWall = h('select', { onchange: () => app.editSelected((u) => {
+      const to = moveWall.value;
+      if (to === 'FLOOR' && u.wall !== 'FLOOR') { const p = room.unitPlan(u); u.s = p.x + p.n[0] * 40; u.h = p.y + p.n[1] * 40; }
+      else if (to !== 'FLOOR' && u.wall === 'FLOOR') { const q = room.projectOnWall(room.wall(to), u.s, u.h); u.s = q.s; u.h = 150; }
+      u.wall = to;
+    }) });
     const fS = numRow('Along wall', { min: 0, max: 1000, step: 1, unit: 'cm', onChange: (v) => app.editSelected((u) => { u.s = v; }) });
     const fH = numRow('Height', { min: 0, max: room.wallHeight, step: 1, unit: 'cm', onChange: (v) => app.editSelected((u) => { u.h = v; }) });
     const fR = numRow('Roll', { min: -180, max: 180, step: 1, unit: '°', onChange: (v) => app.editSelected((u) => { u.rot = v; }) });
@@ -118,7 +123,7 @@ export function buildUI(app) {
       h('div', { class: 'btns' },
         h('button', { onclick: () => app.editSelected((u) => { u.dir = u.dir === 'cw' ? 'ccw' : 'cw'; }) }, 'Reverse dir'),
         h('button', { onclick: () => app.editSelected((u) => { u.on = !u.on; }) }, 'Toggle on/off'),
-        h('button', { onclick: () => app.snapSelected(), title: 'Move each selected unit so its tip sits on the nearest 17x17 profile on its wall' }, 'Attach to profile'),
+        h('button', { onclick: () => app.editSelected((u) => { const q = room.nearestMountable(...(() => { const p = room.unitPlan(u); return [p.x, p.y]; })()); if (u.wall !== 'FLOOR') { u.wall = 'FLOOR'; const p = room.unitPlan({ wall: q.wall.id, s: q.s, h: 0 }); u.s = p.x + p.n[0] * 40; u.h = p.y + p.n[1] * 40; } else { u.wall = q.wall.id; u.s = q.s; u.h = 150; } }), title: 'Move the selection from its wall to the floor in front of it, or from the floor back to the nearest wall' }, 'Wall ⇄ floor'),
       ),
     );
 
@@ -164,13 +169,18 @@ export function buildUI(app) {
       const ids = sel.map((u) => u.id);
       info.innerHTML = `<b>${sel.length}</b> of ${units.units.length} selected: ${ids.slice(0, 14).join(', ')}${ids.length > 14 ? '…' : ''}<br><span class="dim">on ${Object.entries(walls).map(([w, n]) => `${w}×${n}`).join(', ')}</span>`;
       fillWalls(moveWall, false);
+      moveWall.append(h('option', { value: 'FLOOR' }, 'Floor (lying, funnel up)'));
       const wa = agg(sel.map((u) => u.wall));
+      const allFloor = sel.every((u) => u.wall === 'FLOOR');
+      fS.row.querySelector('.lbl').textContent = allFloor ? 'Plan x' : 'Along wall';
+      fH.row.querySelector('.lbl').textContent = allFloor ? 'Plan y' : 'Height';
       if (!room.mountable(room.wall(wa.v))) moveWall.append(h('option', { value: wa.v }, `${wa.v} [not mountable]`));
       if (wa.mixed) moveWall.append(h('option', { value: '', disabled: true }, 'mixed'));
       moveWall.value = wa.mixed ? '' : wa.v;
       const maxLen = Math.max(...sel.map((u) => room.wall(u.wall).length));
-      fS.setRange(0, Math.round(maxLen));
-      fH.setRange(0, room.wallHeight);
+      const bb = room.bounds();
+      fS.setRange(allFloor ? Math.round(bb.minX) : 0, allFloor ? Math.round(bb.maxX) : Math.round(maxLen));
+      fH.setRange(allFloor ? Math.round(bb.minY) : 0, allFloor ? Math.round(bb.maxY) : room.wallHeight);
       for (const [f, k] of [[fS, 's'], [fH, 'h'], [fR, 'rot'], [fP, 'rpm']]) {
         const a = agg(sel.map((u) => u[k]));
         f.set(Math.round(a.v * 10) / 10, a.mixed);
@@ -202,81 +212,51 @@ export function buildUI(app) {
     panel.append(s.el);
   }
 
-  // ---------------------------------------------------------------- wall profiles
+  // ---------------------------------------------------------------- grid lines (17x17 profile)
   {
     const { grid } = app;
-    const s = section('Wall profiles 17×17 (electric channel)', false);
+    const s = section('Grid lines — 17×17 white profile', true);
     const info = h('div', { class: 'info' });
-    const pick = h('select', {});
-    const fields = h('div', { class: 'props' });
-    const wallOf = h('select', {});
-    for (const w of room.walls) if (w.kind === 'target' || w.kind === 'optional') wallOf.append(h('option', { value: w.id }, `${w.id} (${Math.round(w.length)} cm)`));
-    const cur = () => grid.profiles.find((p) => p.id === pick.value);
-    const upd = (fn) => () => { const p = cur(); if (!p) return; fn(p); grid.clampProfile(p); grid.buildProfiles(); refreshFields(); app.autosave(); };
-    const dirSel = h('select', { onchange: upd((p) => { p.dir = dirSel.value; if (p.dir === 'h') { p.h0 = p.h1 = (p.h0 + p.h1) / 2; p.s1 = p.s0 + 100; } else { p.s1 = p.s0; p.h0 = 0; p.h1 = room.wallHeight; } }) },
-      h('option', { value: 'v' }, 'vertical'), h('option', { value: 'h' }, 'horizontal'));
-    wallOf.addEventListener('change', upd((p) => { p.wall = wallOf.value; }));
-    const fS0 = numRow('Start along', { min: 0, max: 2000, unit: 'cm', onChange: (v) => upd((p) => { p.s0 = v; if (p.dir === 'v') p.s1 = v; })() });
-    const fS1 = numRow('End along', { min: 0, max: 2000, unit: 'cm', onChange: (v) => upd((p) => { p.s1 = v; })() });
-    const fH0 = numRow('Bottom / height', { min: 0, max: 600, unit: 'cm', onChange: (v) => upd((p) => { p.h0 = v; if (p.dir === 'h') p.h1 = v; })() });
-    const fH1 = numRow('Top', { min: 0, max: 600, unit: 'cm', onChange: (v) => upd((p) => { p.h1 = v; })() });
-    const refreshFields = () => {
-      const p = cur();
-      fields.classList.toggle('disabled', !p);
-      if (p) {
-        wallOf.value = p.wall; dirSel.value = p.dir;
-        const L = room.wall(p.wall).length;
-        fS0.setRange(0, Math.round(L)); fS1.setRange(0, Math.round(L)); fH0.setRange(0, room.wallHeight); fH1.setRange(0, room.wallHeight);
-        fS0.set(Math.round(p.s0)); fS1.set(Math.round(p.s1)); fH0.set(Math.round(p.h0)); fH1.set(Math.round(p.h1));
-        fS1.row.style.display = p.dir === 'h' ? '' : 'none';
-        fH1.row.style.display = p.dir === 'v' ? '' : 'none';
-      }
-      const att = units.units.filter((u) => !u.hidden && grid.attachedTo(u)).length;
-      const vis = units.units.filter((u) => !u.hidden).length;
-      info.innerHTML = `<b>${grid.profiles.length}</b> profiles · total <b>${(grid.totalLengthCm() / 100).toFixed(1)} m</b><br><span class="dim">${att} of ${vis} units sit on a profile</span>`;
+    const drawBtn = h('button', { class: 'hi', onclick: () => app.setDraw(!app.draw.on) }, '✎ Draw lines (L)');
+    ui.setDrawState = (on) => { drawBtn.textContent = on ? '■ Stop drawing (Esc)' : '✎ Draw lines (L)'; drawBtn.classList.toggle('on', on); };
+    const sel = h('div', { class: 'props' });
+    const surfName = (id) => (id === 'FLOOR' ? 'Floor' : id);
+    const refresh = () => {
+      const byS = {};
+      for (const l of grid.lines) byS[surfName(l.surf)] = (byS[surfName(l.surf)] ?? 0) + grid.lengthCm(l);
+      info.innerHTML = `<b>${grid.lines.length}</b> lines · total profile <b>${(grid.totalLengthCm() / 100).toFixed(1)} m</b><br>` +
+        `<span class="dim">${Object.entries(byS).map(([k, v]) => `${k} ${(v / 100).toFixed(1)} m`).join(' · ') || 'no lines yet'}</span>`;
+      sel.innerHTML = '';
+      const l = grid.lines.find((x) => x.id === grid.selected);
+      if (!l) { sel.append(h('div', { class: 'help' }, 'Click a line (drawing off) to select it · Delete key removes it')); return; }
+      const isF = l.surf === 'FLOOR';
+      const upd = () => { grid.buildLines(); app.editProfiles(); };
+      const f = (label, arr, k) => numRow(label, { min: isF ? -100 : 0, max: isF ? 2300 : Math.round(room.wall(l.surf)?.length ?? 2000), value: Math.round(arr[k]), unit: 'cm', onChange: (v) => { arr[k] = v; upd(); } }).row;
+      sel.append(
+        h('div', { class: 'sub' }, `Line ${l.id} · ${isF ? 'floor' : `wall ${l.surf}`} · ${grid.lengthCm(l).toFixed(0)} cm`),
+        f(isF ? 'Start x' : 'Start along', l.a, 0), f(isF ? 'Start y' : 'Start height', l.a, 1),
+        f(isF ? 'End x' : 'End along', l.b, 0), f(isF ? 'End y' : 'End height', l.b, 1),
+        h('div', { class: 'btns' }, h('button', { onclick: () => app.deleteSelectedLine() }, 'Delete line')));
     };
-    const fillPick = (sel) => {
-      pick.innerHTML = '';
-      pick.append(h('option', { value: '' }, '— pick a profile —'));
-      for (const p of grid.profiles) pick.append(h('option', { value: p.id }, `${p.id} · ${p.wall} · ${p.dir === 'v' ? `vertical at ${Math.round(p.s0)} cm` : `horizontal at ${Math.round(p.h0)} cm high`}`));
-      pick.value = sel ?? '';
-      grid.select(pick.value || null);
-      refreshFields();
-    };
-    pick.addEventListener('change', () => { grid.select(pick.value || null); refreshFields(); });
-    const addProfile = (dir) => {
-      const w = room.wall(wallOf.value) ?? room.mountableWalls()[0];
-      const p = dir === 'v' ? { id: grid.newId(), wall: w.id, dir, s0: Math.round(w.length / 2), s1: Math.round(w.length / 2), h0: 0, h1: room.wallHeight }
-        : { id: grid.newId(), wall: w.id, dir, s0: 0, s1: Math.round(w.length), h0: 200, h1: 200 };
-      grid.profiles.push(p);
-      fillPick(p.id); app.autosave();
-    };
-    fields.append(
-      h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Wall'), wallOf),
-      h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Direction'), dirSel),
-      fS0.row, fS1.row, fH0.row, fH1.row,
-      h('div', { class: 'btns' },
-        h('button', { onclick: () => { const p = cur(); if (!p) return; grid.profiles = grid.profiles.filter((q) => q !== p); fillPick(); app.autosave(); } }, 'Delete profile'),
-        h('button', { onclick: () => { const p = cur(); if (!p) return; const q = { ...p, id: grid.newId() }; if (q.dir === 'v') { q.s0 += 50; q.s1 = q.s0; } else { q.h0 += 30; q.h1 = q.h0; } grid.profiles.push(q); fillPick(q.id); app.autosave(); } }, 'Duplicate (+50 cm / +30 cm)'),
-      ));
+    app.onLinesChanged = refresh;
     const cg = h('input', { type: 'checkbox', checked: true, onchange: (e) => grid.setCeilingGridVisible(e.target.checked) });
     const pv = h('input', { type: 'checkbox', checked: true, onchange: (e) => grid.setProfilesVisible(e.target.checked) });
-    const sn = h('input', { type: 'checkbox', checked: app.snapToProfiles, onchange: (e) => (app.snapToProfiles = e.target.checked) });
+    const su = h('input', { type: 'checkbox', checked: app.draw.snapUnits, onchange: (e) => (app.draw.snapUnits = e.target.checked) });
+    const step = h('input', { type: 'number', class: 'num', value: app.draw.step, min: 0, max: 100, onchange: (e) => (app.draw.step = +e.target.value) });
     s.body.append(info,
-      h('label', { class: 'row chk' }, cg, ' Ceiling grid (existing 4×4 cm metal)'),
-      h('label', { class: 'row chk' }, pv, ' Wall profiles'),
-      h('label', { class: 'row chk' }, sn, ' Dragged units snap onto profiles'),
-      h('div', { class: 'btns' },
-        h('button', { onclick: () => { app.snapAll(); refreshFields(); } }, 'Attach all units'),
-        h('button', { onclick: () => addProfile('v') }, '+ Vertical'),
-        h('button', { onclick: () => addProfile('h') }, '+ Horizontal'),
-        h('button', { onclick: () => { grid.setProfiles(grid.defaultProfiles()); fillPick(); app.autosave(); }, title: 'Vertical runs where the ceiling-grid lines meet the walls + one run under the ceiling' }, 'Reset to grid'),
+      h('div', { class: 'btns' }, drawBtn,
+        h('button', { onclick: () => { if (!confirm('Remove all grid lines?')) return; grid.setLines([]); app.editProfiles(); } }, 'Clear all'),
+        h('button', { onclick: () => { grid.setLines(grid.defaultLines()); app.editProfiles(); }, title: 'A grid on every wall with units: the ceiling-grid lines continue down the walls (gaps filled to one cell) + one run under the ceiling' }, 'Default wall grid'),
       ),
-      h('div', { class: 'row' }, pick), fields,
-      h('div', { class: 'help' }, 'Add a profile on the wall chosen above, then set its position. The unit tip (wire exit) sits on the profile: under a horizontal run the tip points up, beside a vertical run it points sideways.'),
+      h('div', { class: 'help' }, 'Drawing: click on a wall or the floor to start, click again to end the line — it continues from there, so you can draw a path. Click the same point twice or press Esc to stop. Shift = straight (horizontal / vertical). Ends snap to unit tips and to other line ends.'),
+      h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Snap step'), step, h('span', { class: 'unit' }, 'cm')),
+      h('label', { class: 'row chk' }, su, ' Snap line ends to unit tips (wire exit)'),
+      h('label', { class: 'row chk' }, pv, ' Show grid lines'),
+      h('label', { class: 'row chk' }, cg, ' Show the existing ceiling grid (4×4 cm metal)'),
+      sel,
     );
-    ui.refreshProfiles = () => fillPick(pick.value);
-    fillPick();
+    ui.refreshProfiles = refresh;
+    refresh();
     panel.append(s.el);
   }
 
@@ -391,7 +371,7 @@ export function buildUI(app) {
     const stamp = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     s.body.append(
       h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Seed'), seed, h('span', { class: 'lbl' }, 'Units'), count,
-        h('button', { onclick: () => { app.seed = +seed.value; app.setUnits(generateLayout(room, { seed: app.seed, count: +count.value })); if (app.snapToProfiles) app.snapAll(); app.toast(`Generated ${count.value} units, seed ${seed.value}`); } }, 'Generate')),
+        h('button', { onclick: () => { app.seed = +seed.value; app.setUnits(generateLayout(room, { seed: app.seed, count: +count.value })); app.toast(`Generated ${count.value} units, seed ${seed.value}`); } }, 'Generate')),
       h('div', { class: 'btns' },
         h('button', { onclick: () => { localStorage.setItem('pinrose.layout', layoutToJSON(app)); app.toast('Saved in this browser'); } }, 'Save (browser)'),
         h('button', { onclick: () => { const t = localStorage.getItem('pinrose.layout'); if (!t) return app.toast('Nothing saved yet', true); app.loadLayout(parseLayout(t)); app.toast('Loaded from browser'); } }, 'Load (browser)'),

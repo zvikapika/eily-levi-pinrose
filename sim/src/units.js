@@ -150,15 +150,30 @@ export class Units {
   clampUnit(u) {
     const w = this.room.wall(u.wall);
     if (!w) return;
+    u.rot = ((((u.rot + 180) % 360) + 360) % 360) - 180;
+    u.rpm = Math.max(0, u.rpm);
+    if (w.kind === 'floor') {
+      // keep floor units inside the gallery floor polygon (fall back: leave as is if outside)
+      const b = this.room.bounds();
+      u.s = Math.max(b.minX + 10, Math.min(b.maxX - 10, u.s));
+      u.h = Math.max(b.minY + 10, Math.min(b.maxY - 10, u.h));
+      return;
+    }
     const m = UNIT_PARAMS.edgeMarginCm;
     u.s = Math.max(Math.min(m, w.length / 2), Math.min(Math.max(w.length - m, w.length / 2), u.s));
     u.h = Math.max(m, Math.min(this.room.wallHeight - m, u.h));
-    u.rot = ((((u.rot + 180) % 360) + 360) % 360) - 180;
-    u.rpm = Math.max(0, u.rpm);
   }
 
   // world pose of a unit's frame (origin = funnel axis on the wall face)
   unitMatrix(u, out = new THREE.Matrix4()) {
+    const gap0 = UNIT_PARAMS.wallGapMm / 1000;
+    if (u.wall === 'FLOOR') {
+      // lying on the floor, funnel up; roll 0 = tip toward plan north
+      const base = new THREE.Matrix4().makeBasis(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 1, 0));
+      out.multiplyMatrices(base, new THREE.Matrix4().makeRotationZ(THREE.MathUtils.degToRad(u.rot)));
+      out.setPosition(u.s * CM, gap0, u.h * CM);
+      return out;
+    }
     const w = this.room.wall(u.wall);
     const p = this.room.pointAt(w, u.s);
     const Z = new THREE.Vector3(p.n[0], 0, p.n[1]);
@@ -179,6 +194,10 @@ export class Units {
   pickPoint(i, out = new THREE.Vector3()) {
     return out.set(0, 0.05, 0.06).applyMatrix4(this.baseMatrices[i]);
   }
+  // world position of the teardrop tip (wire exit), used to snap grid lines onto units
+  tipPoint(i, out = new THREE.Vector3()) {
+    return out.set(0, 0.134, 0.01).applyMatrix4(this.baseMatrices[i]);
+  }
 
   refresh() {
     const n = this.units.length;
@@ -188,7 +207,7 @@ export class Units {
       const u = this.units[i];
       this.clampUnit(u);
       const m = (this.baseMatrices[i] = this.unitMatrix(u, this.baseMatrices[i] ?? new THREE.Matrix4()));
-      const pz = this.room.pointAt(this.room.wall(u.wall), u.s);
+      const pz = this.room.unitPlan(u);
       u.zone = zoneOf(this.room, pz.x, pz.y);
       if (u.hidden) m.multiply(this._zero ??= new THREE.Matrix4().makeScale(1e-6, 1e-6, 1e-6));
       const glow = this.led.on && !u.hidden && u.zone === this.led.zone;
@@ -199,8 +218,7 @@ export class Units {
       this.cover.setMatrixAt(i, m);
       const sel = this.selected.has(i);
       this.cover.setColorAt(i, sel ? COLORS.selected : u.on ? COLORS.normal : COLORS.off);
-      const w = this.room.wall(u.wall);
-      const p = this.room.pointAt(w, u.s);
+      const p = this.room.unitPlan(u);
       this._m2.makeTranslation((p.x + p.n[0] * 14) * CM, H, (p.y + p.n[1] * 14) * CM);
       if (u.hidden) this._m2.multiply(this._zero);
       this.markers.setMatrixAt(i, this._m2);

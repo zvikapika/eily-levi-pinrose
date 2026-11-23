@@ -60,7 +60,7 @@ export function layoutToJSON(state) {
       seed: state.seed,
       units: state.units.units.map(({ zone, ...u }) => u),
       lighting: state.lighting.toJSON(),
-      profiles: state.grid?.toJSON(),
+      lines: state.grid?.toJSON(),
       partitions: state.partitions?.toJSON(),
       led: state.units.led,
     },
@@ -85,7 +85,7 @@ export function layoutToCSV(room, units) {
   const order = [...units].sort((a, b) => (a.wall === b.wall ? a.s - b.s : a.wall.localeCompare(b.wall)));
   for (const u of order) {
     const w = room.wall(u.wall);
-    const p = room.pointAt(w, u.s);
+    const p = room.unitPlan(u);
     rows.push([
       u.id, u.wall, `"${w.label.replace(/"/g, "'")}"`, u.s.toFixed(1), u.h.toFixed(1), u.rot.toFixed(1),
       u.rpm, u.dir, u.on ? 1 : 0, p.x.toFixed(1), p.y.toFixed(1), u.zone ?? '', u.profile ?? '', u.hidden ? 1 : 0,

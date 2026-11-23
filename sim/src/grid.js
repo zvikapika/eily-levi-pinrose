@@ -48,8 +48,9 @@ export class Grid {
     this.ceilMat = new THREE.MeshStandardMaterial({ color: this.cfg.colour ?? 0x3a3a3c, roughness: 0.45, metalness: 0.7 });
     this.profMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
     this.profSelMat = new THREE.MeshStandardMaterial({ color: 0xff8a3d, roughness: 0.5 });
-    this.profiles = [];
+    this.lines = [];
     this.selected = null;
+    this.preview = null;
     this.ceilingVisible = true;
     this.profilesVisible = true;
     this.build();
@@ -88,133 +89,139 @@ export class Grid {
     this.group.add(this.ceil);
     this.prof = new THREE.Group();
     this.group.add(this.prof);
-    this.buildProfiles();
+    this.buildLines();
   }
 
-  // ------------------------------------------------------------ wall profiles
-  // profile: {id, wall, dir:'v'|'h', s0, s1, h0, h1}  (v: s0 == s1; h: h0 == h1), cm along wall / above floor
-  defaultProfiles() {
+  // ------------------------------------------------------------ grid lines (white 17x17 profile)
+  // line: {id, surf: wallId | 'FLOOR', a: [u, v], b: [u, v]}; wall: u = cm along the wall, v = cm above the floor;
+  // floor: u, v = plan x, y (cm). Lines can run in any direction on their surface.
+  defaultLines() {
     const room = this.room, H = room.wallHeight, out = [];
     let k = 1;
-    const id = () => `P${String(k++).padStart(2, '0')}`;
+    const id = () => `L${String(k++).padStart(3, '0')}`;
     const walls = room.walls.filter((w) => w.kind === 'target' || w.kind === 'optional');
-    // vertical runs where a ceiling-grid line meets a wall face
-    for (const z of room.data.zones ?? []) {
-      const g = this.cfg.zones?.[z.id];
-      if (!g) continue;
-      const lines = [...(g.x ?? []).map((x) => ({ p: [x, 0], d: [0, 1] })), ...(g.y ?? []).map((y) => ({ p: [0, y], d: [1, 0] }))];
-      for (const L of lines) for (const w of walls) for (const sg of w.segs) {
-        const ex = sg.b[0] - sg.a[0], ey = sg.b[1] - sg.a[1];
-        const den = L.d[0] * ey - L.d[1] * ex;
-        if (Math.abs(den) < 1e-9) continue;
-        const u = ((sg.a[0] - L.p[0]) * L.d[1] - (sg.a[1] - L.p[1]) * L.d[0]) / den;
-        if (u <= 0.02 || u >= 0.98) continue;
-        const px = sg.a[0] + ex * u, py = sg.a[1] + ey * u;
-        if (!pointInPoly(px + sg.n[0] * 5, py + sg.n[1] * 5, z.polygon)) continue;
-        const s = Math.round(sg.s0 + u * sg.len);
-        if (out.some((p) => p.wall === w.id && p.dir === 'v' && Math.abs(p.s0 - s) < 3)) continue;
-        out.push({ id: id(), wall: w.id, dir: 'v', s0: s, s1: s, h0: 0, h1: H });
+    const cell = 290;
+    for (const w of walls) {
+      const sg = w.segs[0];
+      // 1) vertical lines where a ceiling-grid line meets this wall (the grid continues down the wall)
+      const ss = [];
+      for (const z of room.data.zones ?? []) {
+        const g = this.cfg.zones?.[z.id];
+        if (!g) continue;
+        const lines = [...(g.x ?? []).map((x) => ({ p: [x, 0], d: [0, 1] })), ...(g.y ?? []).map((y) => ({ p: [0, y], d: [1, 0] }))];
+        for (const L of lines) for (const g2 of w.segs) {
+          const ex = g2.b[0] - g2.a[0], ey = g2.b[1] - g2.a[1];
+          const den = L.d[0] * ey - L.d[1] * ex;
+          if (Math.abs(den) < 1e-9) continue;
+          const u = ((g2.a[0] - L.p[0]) * L.d[1] - (g2.a[1] - L.p[1]) * L.d[0]) / den;
+          if (u <= 0.02 || u >= 0.98) continue;
+          const px = g2.a[0] + ex * u, py = g2.a[1] + ey * u;
+          if (!pointInPoly(px + g2.n[0] * 5, py + g2.n[1] * 5, z.polygon)) continue;
+          ss.push(Math.round(g2.s0 + u * g2.len));
+        }
       }
+      // 2) fill so no gap on the wall is wider than one grid cell (walls the ceiling lines don't reach get lines too)
+      const pts = [0, ...ss.sort((a, b) => a - b), Math.round(w.length)];
+      const all = [];
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i], b = pts[i + 1], n = Math.ceil((b - a) / cell);
+        for (let j = 1; j < n; j++) all.push(Math.round(a + ((b - a) * j) / n));
+        if (i + 1 < pts.length - 1) all.push(b);
+      }
+      for (const sv of [...new Set(all)]) out.push({ id: id(), surf: w.id, a: [sv, 0], b: [sv, H] });
+      // 3) one horizontal line under the ceiling (the grid's edge frame comes down to the wall)
+      const hh = H - (this.pcfg.topRunBelowCeilingCm ?? 50);
+      out.push({ id: id(), surf: w.id, a: [0, hh], b: [Math.round(w.length), hh] });
     }
-    // one horizontal run under the ceiling on every mountable wall
-    const hh = H - (this.pcfg.topRunBelowCeilingCm ?? 50);
-    for (const w of walls) out.push({ id: id(), wall: w.id, dir: 'h', s0: 0, s1: Math.round(w.length), h0: hh, h1: hh });
     return out;
   }
 
-  setProfiles(list) {
-    this.profiles = list;
-    this.nextId = 1 + Math.max(0, ...list.map((p) => +String(p.id).replace(/\D/g, '') || 0));
-    this.buildProfiles();
+  setLines(list) {
+    // accept the round-2 profile format ({wall, dir, s0, s1, h0, h1}) too
+    this.lines = (list ?? []).map((p) => (p.surf ? { ...p, a: [...p.a], b: [...p.b] }
+      : { id: p.id, surf: p.wall, a: [p.s0, p.h0], b: p.dir === 'v' ? [p.s0, p.h1] : [p.s1, p.h0] }));
+    this.nextId = 1 + Math.max(0, ...this.lines.map((p) => +String(p.id).replace(/\D/g, '') || 0));
+    if (this.selected && !this.lines.some((l) => l.id === this.selected)) this.selected = null;
+    this.buildLines();
   }
-  newId() { return `P${String(this.nextId++).padStart(2, '0')}`; }
+  newId() { return `L${String(this.nextId++).padStart(3, '0')}`; }
 
-  clampProfile(p) {
-    const w = this.room.wall(p.wall);
+  // surface coordinates -> world point (metres), sitting half a profile off the surface
+  toWorld(surf, uv, out = new THREE.Vector3()) {
+    const sz = this.pcfg.sizeCm ?? 1.7;
+    if (surf === 'FLOOR') return out.set(uv[0] * CM, (sz / 2) * CM, uv[1] * CM);
+    const w = this.room.wall(surf);
+    const p = this.room.pointAt(w, uv[0]);
+    return out.set((p.x + p.n[0] * (sz / 2 + 0.05)) * CM, uv[1] * CM, (p.y + p.n[1] * (sz / 2 + 0.05)) * CM);
+  }
+  // world point -> surface coordinates
+  toSurf(surf, v) {
+    if (surf === 'FLOOR') return [v.x / CM, v.z / CM];
+    const w = this.room.wall(surf);
+    return [this.room.projectOnWall(w, v.x / CM, v.z / CM).s, v.y / CM];
+  }
+  surfNormal(surf) {
+    if (surf === 'FLOOR') return new THREE.Vector3(0, 1, 0);
+    const n = this.room.wall(surf).segs[0].n;
+    return new THREE.Vector3(n[0], 0, n[1]);
+  }
+
+  clampLine(l) {
+    const w = this.room.wall(l.surf);
     if (!w) return;
+    if (l.surf === 'FLOOR') return;
     const H = this.room.wallHeight;
-    const cl = (v, a, b) => Math.max(a, Math.min(b, v));
-    p.s0 = cl(p.s0, 0, w.length); p.s1 = cl(p.s1, 0, w.length);
-    p.h0 = cl(p.h0, 0, H); p.h1 = cl(p.h1, 0, H);
-    if (p.dir === 'v') { p.s1 = p.s0; if (p.h1 < p.h0) [p.h0, p.h1] = [p.h1, p.h0]; }
-    else { p.h1 = p.h0; if (p.s1 < p.s0) [p.s0, p.s1] = [p.s1, p.s0]; }
+    for (const p of [l.a, l.b]) { p[0] = Math.max(0, Math.min(w.length, p[0])); p[1] = Math.max(0, Math.min(H, p[1])); }
   }
 
-  buildProfiles() {
+  lineMesh(l, mat) {
+    const sz = (this.pcfg.sizeCm ?? 1.7) * CM;
+    const A = this.toWorld(l.surf, l.a), B = this.toWorld(l.surf, l.b);
+    const len = A.distanceTo(B);
+    if (len < 1e-4) return null;
+    const X = B.clone().sub(A).normalize();
+    const N = this.surfNormal(l.surf);
+    const Y = new THREE.Vector3().crossVectors(N, X).normalize();
+    const Z = new THREE.Vector3().crossVectors(X, Y);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(len + sz, sz, sz), mat); // + sz: square ends meet at the joints
+    m.matrixAutoUpdate = false;
+    m.matrix.makeBasis(X, Y, Z).setPosition(A.clone().add(B).multiplyScalar(0.5));
+    m.castShadow = true; m.receiveShadow = true;
+    m.userData.lineId = l.id;
+    return m;
+  }
+
+  buildLines() {
     for (const c of [...this.prof.children]) { this.prof.remove(c); c.geometry?.dispose(); }
-    const sz = (this.pcfg.sizeCm ?? 1.7);
-    this.profMeshes = [];
-    for (const p of this.profiles) {
-      this.clampProfile(p);
-      const w = this.room.wall(p.wall);
-      if (!w) continue;
-      const pieces = [];
-      if (p.dir === 'v') pieces.push([p.s0, p.s0]);
-      else {
-        // split a horizontal run at the wall's polyline corners
-        for (const g of w.segs) {
-          const a = Math.max(p.s0, g.s0), b = Math.min(p.s1, g.s0 + g.len);
-          if (b - a > 0.5) pieces.push([a, b]);
-        }
-      }
-      for (const [a, b] of pieces) {
-        const pa = this.room.pointAt(w, a), pb = this.room.pointAt(w, b);
-        const n = pa.n, u = pa.u;
-        const len = p.dir === 'v' ? p.h1 - p.h0 : b - a;
-        const geo = p.dir === 'v' ? new THREE.BoxGeometry(sz * CM, len * CM, sz * CM) : new THREE.BoxGeometry(len * CM, sz * CM, sz * CM);
-        const m = new THREE.Mesh(geo, this.selected === p.id ? this.profSelMat : this.profMat);
-        const cx = (pa.x + pb.x) / 2 + n[0] * (sz / 2 + 0.05), cy = (pa.y + pb.y) / 2 + n[1] * (sz / 2 + 0.05);
-        const ch = p.dir === 'v' ? (p.h0 + p.h1) / 2 : p.h0;
-        m.position.set(cx * CM, ch * CM, cy * CM);
-        m.rotation.y = Math.atan2(-u[1], u[0]);
-        m.castShadow = true; m.receiveShadow = true;
-        m.userData.profileId = p.id;
-        this.prof.add(m);
-        this.profMeshes.push(m);
-      }
+    this.lineMeshes = [];
+    for (const l of this.lines) {
+      this.clampLine(l);
+      if (!this.room.wall(l.surf)) continue;
+      const m = this.lineMesh(l, this.selected === l.id ? this.profSelMat : this.profMat);
+      if (!m) continue;
+      this.prof.add(m);
+      this.lineMeshes.push(m);
     }
+    this.setPreview(this.preview);
     this.prof.visible = this.profilesVisible;
   }
 
-  select(id) { this.selected = id; this.buildProfiles(); }
+  // dashed-looking preview of the line being drawn
+  setPreview(l) {
+    this.preview = l;
+    if (this.previewMesh) { this.prof.remove(this.previewMesh); this.previewMesh.geometry.dispose(); this.previewMesh = null; }
+    if (!l) return;
+    this.previewMat ??= new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.75 });
+    const m = this.lineMesh(l, this.previewMat);
+    if (m) { this.previewMesh = m; this.prof.add(m); }
+  }
+
+  select(id) { this.selected = id; this.buildLines(); }
+  remove(id) { this.lines = this.lines.filter((l) => l.id !== id); if (this.selected === id) this.selected = null; this.buildLines(); }
   setCeilingGridVisible(v) { this.ceilingVisible = v; this.ceil.visible = v; }
   setProfilesVisible(v) { this.profilesVisible = v; this.prof.visible = v; }
 
-  // nearest profile on the same wall to a unit position -> snapped pose {s, h, rot, profile, dist}
-  // the teardrop TIP (wire exit) touches the profile: tip is TIP_CM from the funnel axis
-  snap(u, maxDistCm = Infinity) {
-    const TIP_CM = 13.4 + (this.pcfg.sizeCm ?? 1.7) / 2 + 0.3;
-    let best = null;
-    for (const p of this.profiles) {
-      if (p.wall !== u.wall) continue;
-      let c;
-      if (p.dir === 'v') {
-        const side = u.s >= p.s0 ? 1 : -1; // unit on the +s or -s side of the profile
-        const h = Math.max(p.h0 + 10, Math.min(p.h1 - 10, u.h));
-        // unit frame X (viewer's right, facing the wall) = (n.y, -n.x) in plan; +s is +X or -X depending on the wall side.
-        // roll is CCW facing the wall; tip (frame +Y rotated by roll) = -X at +90, +X at -90; it must point back at the profile.
-        const pt = this.room.pointAt(this.room.wall(p.wall), p.s0);
-        const sgn = Math.sign(pt.n[1] * pt.u[0] - pt.n[0] * pt.u[1]) || 1;
-        c = { s: p.s0 + side * TIP_CM, h, rot: -side * sgn > 0 ? -90 : 90, d: Math.abs(u.s - p.s0) };
-      } else {
-        const side = u.h <= p.h0 ? -1 : 1; // below (tip up) or above (tip down)
-        const s = Math.max(p.s0 + 10, Math.min(p.s1 - 10, u.s));
-        c = { s, h: p.h0 + side * TIP_CM, rot: side < 0 ? 0 : 180, d: Math.abs(u.h - p.h0) };
-      }
-      c.profile = p.id;
-      if (c.d <= maxDistCm && (!best || c.d < best.d)) best = c;
-    }
-    return best;
-  }
-  // is unit u attached to a profile (tip within 2 cm of one)?
-  attachedTo(u) {
-    const c = this.snap(u);
-    if (!c) return null;
-    return Math.abs(c.s - u.s) < 2 && Math.abs(c.h - u.h) < 2 ? c.profile : null;
-  }
-
-  totalLengthCm() {
-    return this.profiles.reduce((a, p) => a + (p.dir === 'v' ? p.h1 - p.h0 : p.s1 - p.s0), 0);
-  }
-  toJSON() { return this.profiles.map((p) => ({ ...p })); }
+  lengthCm(l) { return Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1]); }
+  totalLengthCm() { return this.lines.reduce((a, l) => a + this.lengthCm(l), 0); }
+  toJSON() { return this.lines.map((l) => ({ id: l.id, surf: l.surf, a: [...l.a], b: [...l.b] })); }
 }

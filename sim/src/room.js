@@ -11,6 +11,10 @@ export class Room {
     this.optionalEnabled = false;
     this.walls = data.walls.map((w) => prepWall(w, data.defaultThicknessCm ?? 20));
     this.byId = new Map(this.walls.map((w) => [w.id, w]));
+    // the floor as a mounting surface for units and grid lines: s = plan x, h = plan y (cm)
+    const bb = this.bounds();
+    this.floorSurface = { id: 'FLOOR', kind: 'floor', label: 'Floor', length: bb.maxX - bb.minX, segs: [], points: [] };
+    this.byId.set('FLOOR', this.floorSurface);
     this.group = new THREE.Group();
     this.group.name = 'room';
     this.wallMat = new THREE.MeshStandardMaterial({ color: 0xf2f0ea, roughness: 0.92, metalness: 0 });
@@ -23,6 +27,8 @@ export class Room {
   }
 
   mountable(w) {
+    if (!w) return false;
+    if (w.kind === 'floor') return true;
     return w.kind === 'target' || (w.kind === 'optional' && this.optionalEnabled);
   }
   mountableWalls() {
@@ -30,6 +36,22 @@ export class Room {
   }
   wall(id) {
     return this.byId.get(id);
+  }
+
+  // plan position + face normal of a unit / surface point: walls use (s along, h up), the floor uses (x, y) in plan
+  surfPoint(surf, a, b) {
+    if (surf === 'FLOOR') return { x: a, y: b, n: [0, 0], u: [1, 0], floor: true };
+    return this.pointAt(this.byId.get(surf), a);
+  }
+  unitPlan(u) { return this.surfPoint(u.wall, u.s, u.h); }
+  insideFloor(x, y) {
+    const P = this.data.floorPolygon;
+    let inside = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const [xi, yi] = P[i], [xj, yj] = P[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
   }
 
   // point on the mounting face at distance s (cm) from the wall's first point
@@ -100,6 +122,7 @@ export class Room {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     floor.name = 'floor';
+    this.floorMesh = floor;
     this.group.add(floor);
     const b = this.bounds();
     const ground = new THREE.Mesh(

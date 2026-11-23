@@ -38,7 +38,7 @@ scene.add(units.group);
 const lighting = new Lighting(scene, renderer, room);
 const grid = new Grid(room);
 scene.add(grid.group);
-grid.setProfiles(grid.defaultProfiles());
+grid.setLines(grid.defaultLines());
 const partitions = new Partitions(room);
 scene.add(partitions.group);
 
@@ -91,8 +91,9 @@ function showLabels() { const v = app.mode === 'plan' && app.labelsOn; labels.ch
 
 // ------------------------------------------------------------------ app state
 const app = {
-  room, units, lighting, grid, partitions, seed: 1, mode: 'overview', labelsOn: true, cutaway: true, unitDots: true, snapToProfiles: true,
-  snapSelected, snapAll, setAllMotors, editProfiles, exportSTL,
+  room, units, lighting, grid, partitions, seed: 1, mode: 'overview', labelsOn: true, cutaway: true, unitDots: true,
+  draw: { on: false, start: null, step: 5, snapUnits: true }, setDraw, deleteSelectedLine, onLinesChanged: null,
+  setAllMotors, editProfiles, exportSTL,
   setUnitDots(v) { app.unitDots = v; units.dots.visible = v && app.mode === 'overview'; },
   setMode, select, editSelected, setUnits, loadLayout, autosave, toast,
   setCeiling(v) { ceilingUser = v; applyCeiling(); },
@@ -141,7 +142,8 @@ function loadLayout(d) {
   if (bad.length) throw new Error(`unknown wall id(s): ${[...new Set(bad.map((u) => u.wall))].join(', ')}`);
   lighting.fromJSON(d.lighting);
   ui.renderSpots();
-  if (Array.isArray(d.profiles)) grid.setProfiles(d.profiles);
+  if (Array.isArray(d.lines)) grid.setLines(d.lines);
+  else if (Array.isArray(d.profiles)) grid.setLines(d.profiles);
   if (d.partitions) partitions.fromJSON(d.partitions);
   if (d.led) units.led = { ...units.led, ...d.led };
   // units left on walls that are no longer mountable (e.g. the glass facade) move to the nearest mountable wall
@@ -197,7 +199,7 @@ function editSelected(fn) {
 // selected units sorted along the walls (wall order in room.json, then distance)
 function selectedOrdered() {
   const order = new Map(room.walls.map((w, i) => [w.id, i]));
-  return [...units.selected].map((i) => units.units[i]).sort((a, b) => order.get(a.wall) - order.get(b.wall) || a.s - b.s);
+  return [...units.selected].map((i) => units.units[i]).sort((a, b) => (order.get(a.wall) ?? 999) - (order.get(b.wall) ?? 999) || a.s - b.s);
 }
 function bulkRandomize(k, a, b) {
   if (!units.selected.size) return toast('Select some units first', true);
@@ -231,56 +233,91 @@ function bulkDistribute(k, a, b) {
   autosave();
 }
 
-// ---- wall profiles: snap units so the tip (wire exit) sits on a profile
-function spreadOnProfiles(list) {
-  // units sharing a profile + side get at least 20 cm between centres along the profile
-  const groups = {};
-  for (const u of list) {
-    const pr = grid.profiles.find((p) => p.id === u.profile);
-    if (!pr) continue;
-    const key = `${pr.id}:${pr.dir === 'v' ? Math.sign(u.s - pr.s0) : Math.sign(u.h - pr.h0)}`;
-    (groups[key] ??= { pr, list: [] }).list.push(u);
-  }
-  for (const { pr, list: L } of Object.values(groups)) {
-    const k = pr.dir === 'v' ? 'h' : 's';
-    const lo = (pr.dir === 'v' ? pr.h0 : pr.s0) + 15, hi = (pr.dir === 'v' ? pr.h1 : pr.s1) - 15;
-    L.sort((a, b) => a[k] - b[k]);
-    for (let i = 1; i < L.length; i++) L[i][k] = Math.max(L[i][k], L[i - 1][k] + 20);
-    for (let i = L.length - 2; i >= 0; i--) L[i][k] = Math.min(L[i][k], L[i + 1][k] - 20);
-    for (const u of L) u[k] = Math.max(lo, Math.min(hi, u[k]));
-  }
-}
-function snapUnit(u, maxD = Infinity) {
-  const c = grid.snap(u, maxD);
-  if (!c) { u.profile = null; return false; }
-  u.s = c.s; u.h = c.h; u.rot = c.rot; u.profile = c.profile;
-  return true;
-}
-function snapList(list) {
-  let n = 0;
-  for (const u of list) n += snapUnit(u) ? 1 : 0;
-  spreadOnProfiles(list);
-  for (const u of list) if (u.profile) { const c = grid.snap(u); if (c) { u.s = c.s; u.h = c.h; u.rot = c.rot; u.profile = c.profile; } }
-  return n;
-}
-function snapSelected() {
-  if (!units.selected.size) return toast('Select some units first', true);
-  const n = snapList([...units.selected].map((i) => units.units[i]));
-  units.refresh(); ui.refreshSelection(); autosave();
-  toast(`${n} unit(s) attached to the nearest profile on their wall`);
-}
-function snapAll() {
-  const n = snapList(units.units);
-  units.refresh(); ui.refreshSelection(); autosave();
-  toast(`${n} of ${units.units.length} units attached to profiles`);
-}
 function setAllMotors(on) {
   units.units.forEach((u) => (u.on = on));
   units.refresh(); ui.refreshSelection(); autosave();
 }
 function editProfiles() {
-  grid.buildProfiles();
+  grid.buildLines();
   autosave();
+  app.onLinesChanged?.();
+}
+// ---- drawing grid lines on walls / floor
+function setDraw(on) {
+  app.draw.on = on;
+  app.draw.start = null;
+  grid.setPreview(null);
+  canvas.style.cursor = on ? 'crosshair' : '';
+  ui.setDrawState?.(on);
+}
+function deleteSelectedLine() {
+  if (!grid.selected) return toast('Click a line first (with drawing off)', true);
+  grid.remove(grid.selected);
+  editProfiles();
+}
+// surface under the cursor: a mountable wall face or the floor -> {surf, uv}
+function surfaceHit(x, y) {
+  ray.setFromCamera(toNDC(x, y), activeCam());
+  const targets = [...room.wallMeshes.filter((m) => m.visible && m.material !== room.ghostMat && room.mountable(room.wall(m.userData.wallId))), room.floorMesh];
+  const hits = ray.intersectObjects(targets, false);
+  if (!hits.length) return null;
+  const h = hits[0];
+  const surf = h.object === room.floorMesh ? 'FLOOR' : h.object.userData.wallId;
+  if (surf !== 'FLOOR') {
+    // only the mounting face counts (not the wall's back or top)
+    const n = h.object.userData.n;
+    if (h.face && Math.abs(h.face.normal.y) > 0.5) return null;
+    void n;
+  }
+  return { surf, uv: grid.toSurf(surf, h.point) };
+}
+// snapping: unit tips and line ends on the same surface, then the step grid; shift = straight (axis-locked)
+function snapUV(surf, uv, from, shift) {
+  let [u, v] = uv;
+  let snapped = null;
+  const near = (p, tol) => Math.hypot(p[0] - u, p[1] - v) < tol;
+  if (app.draw.snapUnits) {
+    for (let i = 0; i < units.units.length; i++) {
+      const un = units.units[i];
+      if (un.hidden || un.wall !== surf) continue;
+      const t = grid.toSurf(surf, units.tipPoint(i, tmpV));
+      if (near(t, 12)) { snapped = t; break; }
+    }
+  }
+  if (!snapped) for (const l of grid.lines) {
+    if (l.surf !== surf) continue;
+    for (const p of [l.a, l.b]) if (near(p, 8)) { snapped = [...p]; break; }
+    if (snapped) break;
+  }
+  if (snapped) [u, v] = snapped;
+  else if (app.draw.step > 0) { const st = app.draw.step; u = Math.round(u / st) * st; v = Math.round(v / st) * st; }
+  if (shift && from) { if (Math.abs(u - from[0]) > Math.abs(v - from[1])) v = from[1]; else u = from[0]; }
+  return [Math.round(u * 10) / 10, Math.round(v * 10) / 10];
+}
+function drawClick(e) {
+  const hit = surfaceHit(e.clientX, e.clientY);
+  if (!hit) return toast('Click on a wall or the floor', true);
+  const st = app.draw.start;
+  if (st && st.surf !== hit.surf) { toast('A line stays on one surface: end it on the same wall / floor (or Esc)', true); return; }
+  const uv = snapUV(hit.surf, hit.uv, st?.uv, e.shiftKey);
+  if (!st) { app.draw.start = { surf: hit.surf, uv }; return; }
+  if (Math.hypot(uv[0] - st.uv[0], uv[1] - st.uv[1]) < 2) { app.draw.start = null; grid.setPreview(null); return; } // same point twice = finish
+  grid.lines.push({ id: grid.newId(), surf: hit.surf, a: st.uv, b: uv });
+  app.draw.start = { surf: hit.surf, uv }; // keep drawing from the end point (polyline); Esc / click the same point to stop
+  grid.setPreview(null);
+  editProfiles();
+}
+function drawMove(e) {
+  const st = app.draw.start;
+  if (!st) return;
+  const hit = surfaceHit(e.clientX, e.clientY);
+  if (!hit || hit.surf !== st.surf) { grid.setPreview(null); return; }
+  grid.setPreview({ id: 'preview', surf: st.surf, a: st.uv, b: snapUV(hit.surf, hit.uv, st.uv, e.shiftKey) });
+}
+function pickLine(x, y) {
+  ray.setFromCamera(toNDC(x, y), activeCam());
+  const hits = ray.intersectObjects(grid.lineMeshes, false);
+  return hits.length ? hits[0].object.userData.lineId : null;
 }
 function exportSTL() {
   // static snapshot of the whole scene (metres -> mm), for SketchUp (STL import needs a SketchUp subscription)
@@ -360,6 +397,9 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Digit2') setMode('walk');
     if (e.code === 'Digit3') setMode('plan');
     if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA') { e.preventDefault(); select([...units.units.keys()]); }
+    if (e.code === 'KeyL') setDraw(!app.draw.on);
+    if (e.code === 'Escape' && app.draw.on) { if (app.draw.start) { app.draw.start = null; grid.setPreview(null); } else setDraw(false); }
+    if ((e.code === 'Delete' || e.code === 'Backspace') && grid.selected) { e.preventDefault(); deleteSelectedLine(); }
   }
 });
 addEventListener('keyup', (e) => (keys[e.code] = false));
@@ -424,6 +464,7 @@ addEventListener('pointerdown', (e) => {
     else if (!e.shiftKey) select([]);
     return;
   }
+  if (app.draw.on) { down = { x: e.clientX, y: e.clientY, unit: -1, moved: false, draw: true }; return; }
   const i = pick(e.clientX, e.clientY);
   down = { x: e.clientX, y: e.clientY, unit: i, moved: false, add: e.shiftKey || e.ctrlKey || e.metaKey };
   if (i >= 0) {
@@ -434,7 +475,9 @@ addEventListener('pointerdown', (e) => {
 }, { capture: true });
 
 addEventListener('pointermove', (e) => {
+  if (app.draw.on && e.target === canvas) drawMove(e);
   if (!down) return;
+  if (down.draw) { if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) down.moved = true; return; }
   const dx = e.clientX - down.x, dy = e.clientY - down.y;
   if (!down.moved && Math.hypot(dx, dy) > 4) {
     down.moved = true;
@@ -457,6 +500,7 @@ addEventListener('pointerup', (e) => {
   const d = down;
   down = null;
   orbit.enabled = app.mode === 'overview';
+  if (d.draw) { if (!d.moved) drawClick(e); return; }
   if (d.box && d.moved) {
     boxEl.style.display = 'none';
     const r = canvas.getBoundingClientRect();
@@ -474,8 +518,11 @@ addEventListener('pointerup', (e) => {
   }
   if (d.moved && d.unit >= 0) { autosave(); ui.refreshSelection(); return; }
   if (d.moved) return; // orbit/pan gesture
-  if (d.unit >= 0) d.add ? toggle(d.unit) : select([d.unit]);
-  else if (!d.add) select([]);
+  if (d.unit >= 0) { d.add ? toggle(d.unit) : select([d.unit]); if (grid.selected) { grid.select(null); app.onLinesChanged?.(); } return; }
+  const lid = pickLine(e.clientX, e.clientY);
+  if (lid) { grid.select(lid); app.onLinesChanged?.(); if (!d.add) select([]); return; }
+  if (grid.selected) { grid.select(null); app.onLinesChanged?.(); }
+  if (!d.add) select([]);
 });
 
 // slide a unit along the mountable walls under the cursor
@@ -483,22 +530,19 @@ const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 function dragUnit(i, x, y) {
   const u = units.units[i];
   ray.setFromCamera(toNDC(x, y), activeCam());
-  let px, py, hcm = u.h;
   if (app.mode === 'plan') {
     floorPlane.constant = 0;
     const p = ray.ray.intersectPlane(floorPlane, tmpV);
     if (!p) return;
-    px = p.x / CM; py = p.z / CM;
+    const px = p.x / CM, py = p.z / CM;
+    if (u.wall === 'FLOOR') { u.s = px; u.h = py; }
+    else { const q = room.nearestMountable(px, py); if (!q) return; u.wall = q.wall.id; u.s = q.s; }
   } else {
-    const mount = room.wallMeshes.filter((m) => m.material !== room.ghostMat && room.mountable(room.wall(m.userData.wallId)));
-    const hits = ray.intersectObjects(mount, false);
-    if (!hits.length) return;
-    px = hits[0].point.x / CM; py = hits[0].point.z / CM; hcm = hits[0].point.y / CM;
+    // free placement on any mountable wall face or on the floor
+    const hit = surfaceHit(x, y);
+    if (!hit) return;
+    u.wall = hit.surf; u.s = hit.uv[0]; u.h = hit.uv[1];
   }
-  const q = room.nearestMountable(px, py);
-  if (!q) return;
-  u.wall = q.wall.id; u.s = q.s; u.h = hcm;
-  if (app.snapToProfiles) snapUnit(u, 60);
   units.refresh();
   ui.refreshSelection();
 }
@@ -559,9 +603,7 @@ function tick(now) {
     toast('Failed to load unit model: ' + err.message, true);
     throw err;
   }
-  const first = generateLayout(room, { seed: app.seed });
-  snapList(first);
-  setUnits(first);
+  setUnits(generateLayout(room, { seed: app.seed }));
   ui.setMode('overview');
   units.dots.visible = app.unitDots;
   showLabels();
@@ -571,7 +613,7 @@ function tick(now) {
 })();
 
 // test / console hooks
-window.__sim = { app, grid, partitions, snapList, THREE, scene, persp, ortho, orbit, walk, units, room, lighting, setMode, select, mulberry32, renderer,
+window.__sim = { app, grid, partitions, surfaceHit, snapUV, THREE, scene, persp, ortho, orbit, walk, units, room, lighting, setMode, select, mulberry32, renderer,
   // benchmark helper: n synchronous animate+render passes, returns ms per frame (includes GPU via readPixels sync)
   bench(n = 60) {
     const gl = renderer.getContext(), px = new Uint8Array(4);

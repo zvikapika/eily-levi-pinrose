@@ -45,3 +45,6 @@ button:hover { background: #3d424a; }
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; transition: .25s; background: #2f3338; color: var(--fg); border: 1px solid var(--line); padding: 8px 14px; border-radius: 6px; pointer-events: none; z-index: 10; }
 #toast.show { opacity: 1; transform: translateX(-50%); }
 #toast.warn { border-color: var(--acc); }
+button.hi { background: var(--acc); color: #1b1b1b; border-color: var(--acc); font-weight: 600; }
+button.mini { padding: 0 5px; margin-left: 6px; font-size: 10px; line-height: 16px; }
+.wall-label.glass { background: rgba(86,204,242,.9); color: #10303a; }

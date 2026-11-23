@@ -6,6 +6,9 @@ import roomData from '../room.json';
 import { Room, CM } from './room.js';
 import { Units } from './units.js';
 import { Lighting } from './lights.js';
+import { Grid } from './grid.js';
+import { Partitions } from './partitions.js';
+import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { generateLayout, layoutToJSON, mulberry32 } from './layout.js';
 import { buildUI } from './ui.js';
 import './style.css';
@@ -33,6 +36,11 @@ scene.add(room.group);
 const units = new Units(room);
 scene.add(units.group);
 const lighting = new Lighting(scene, renderer, room);
+const grid = new Grid(room);
+scene.add(grid.group);
+grid.setProfiles(grid.defaultProfiles());
+const partitions = new Partitions(room);
+scene.add(partitions.group);
 
 const b = room.bounds();
 const center = new THREE.Vector3(((b.minX + b.maxX) / 2) * CM, 0, ((b.minY + b.maxY) / 2) * CM);
@@ -83,7 +91,8 @@ function showLabels() { const v = app.mode === 'plan' && app.labelsOn; labels.ch
 
 // ------------------------------------------------------------------ app state
 const app = {
-  room, units, lighting, seed: 1, mode: 'overview', labelsOn: true, cutaway: true, unitDots: true,
+  room, units, lighting, grid, partitions, seed: 1, mode: 'overview', labelsOn: true, cutaway: true, unitDots: true, snapToProfiles: true,
+  snapSelected, snapAll, setAllMotors, editProfiles, exportSTL,
   setUnitDots(v) { app.unitDots = v; units.dots.visible = v && app.mode === 'overview'; },
   setMode, select, editSelected, setUnits, loadLayout, autosave, toast,
   setCeiling(v) { ceilingUser = v; applyCeiling(); },
@@ -93,6 +102,8 @@ const app = {
     labels.children.forEach((o) => (o.position.y = v * CM));
     lighting.applyAll();
     lighting.applyShadows();
+    grid.build();
+    partitions.rebuild();
     applyCeiling();
     room.setOverlayVisible(app.mode === 'plan');
     units.refresh();
@@ -130,6 +141,20 @@ function loadLayout(d) {
   if (bad.length) throw new Error(`unknown wall id(s): ${[...new Set(bad.map((u) => u.wall))].join(', ')}`);
   lighting.fromJSON(d.lighting);
   ui.renderSpots();
+  if (Array.isArray(d.profiles)) grid.setProfiles(d.profiles);
+  if (d.partitions) partitions.fromJSON(d.partitions);
+  if (d.led) units.led = { ...units.led, ...d.led };
+  // units left on walls that are no longer mountable (e.g. the glass facade) move to the nearest mountable wall
+  let moved = 0;
+  for (const u of d.units) {
+    const w = room.wall(u.wall);
+    if (room.mountable(w)) continue;
+    const p = room.pointAt(w, u.s);
+    const q = room.nearestMountable(p.x, p.y);
+    u.wall = q.wall.id; u.s = q.s; moved++;
+  }
+  if (moved) toast(`${moved} unit(s) were on the glass / non-mountable walls and were moved to the nearest wall`, true);
+  ui.refreshAll?.();
   const L = lighting.toJSON();
   ui.lighting.amb.set(L.ambient); ui.lighting.exp.set(L.exposure); ui.lighting.sh.checked = L.shadows;
   ui.lighting.wc.value = L.wallColor; ui.lighting.fc.value = L.floorColor;
@@ -206,6 +231,86 @@ function bulkDistribute(k, a, b) {
   autosave();
 }
 
+// ---- wall profiles: snap units so the tip (wire exit) sits on a profile
+function spreadOnProfiles(list) {
+  // units sharing a profile + side get at least 20 cm between centres along the profile
+  const groups = {};
+  for (const u of list) {
+    const pr = grid.profiles.find((p) => p.id === u.profile);
+    if (!pr) continue;
+    const key = `${pr.id}:${pr.dir === 'v' ? Math.sign(u.s - pr.s0) : Math.sign(u.h - pr.h0)}`;
+    (groups[key] ??= { pr, list: [] }).list.push(u);
+  }
+  for (const { pr, list: L } of Object.values(groups)) {
+    const k = pr.dir === 'v' ? 'h' : 's';
+    const lo = (pr.dir === 'v' ? pr.h0 : pr.s0) + 15, hi = (pr.dir === 'v' ? pr.h1 : pr.s1) - 15;
+    L.sort((a, b) => a[k] - b[k]);
+    for (let i = 1; i < L.length; i++) L[i][k] = Math.max(L[i][k], L[i - 1][k] + 20);
+    for (let i = L.length - 2; i >= 0; i--) L[i][k] = Math.min(L[i][k], L[i + 1][k] - 20);
+    for (const u of L) u[k] = Math.max(lo, Math.min(hi, u[k]));
+  }
+}
+function snapUnit(u, maxD = Infinity) {
+  const c = grid.snap(u, maxD);
+  if (!c) { u.profile = null; return false; }
+  u.s = c.s; u.h = c.h; u.rot = c.rot; u.profile = c.profile;
+  return true;
+}
+function snapList(list) {
+  let n = 0;
+  for (const u of list) n += snapUnit(u) ? 1 : 0;
+  spreadOnProfiles(list);
+  for (const u of list) if (u.profile) { const c = grid.snap(u); if (c) { u.s = c.s; u.h = c.h; u.rot = c.rot; u.profile = c.profile; } }
+  return n;
+}
+function snapSelected() {
+  if (!units.selected.size) return toast('Select some units first', true);
+  const n = snapList([...units.selected].map((i) => units.units[i]));
+  units.refresh(); ui.refreshSelection(); autosave();
+  toast(`${n} unit(s) attached to the nearest profile on their wall`);
+}
+function snapAll() {
+  const n = snapList(units.units);
+  units.refresh(); ui.refreshSelection(); autosave();
+  toast(`${n} of ${units.units.length} units attached to profiles`);
+}
+function setAllMotors(on) {
+  units.units.forEach((u) => (u.on = on));
+  units.refresh(); ui.refreshSelection(); autosave();
+}
+function editProfiles() {
+  grid.buildProfiles();
+  autosave();
+}
+function exportSTL() {
+  // static snapshot of the whole scene (metres -> mm), for SketchUp (STL import needs a SketchUp subscription)
+  const tmp = new THREE.Group();
+  scene.updateMatrixWorld(true);
+  const add = (mesh, i) => {
+    const g = mesh.geometry.clone();
+    const m = new THREE.Matrix4();
+    if (i !== undefined) { mesh.getMatrixAt(i, m); m.premultiply(mesh.matrixWorld); } else m.copy(mesh.matrixWorld);
+    g.applyMatrix4(m);
+    // metres, Y up -> millimetres, Z up (SketchUp): (x, y, z) -> (x, -z, y)
+    g.applyMatrix4(new THREE.Matrix4().makeScale(1000, 1000, 1000).premultiply(new THREE.Matrix4().makeRotationX(Math.PI / 2)));
+    tmp.add(new THREE.Mesh(g));
+  };
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.visible) return;
+    let p = o; while (p) { if (!p.visible) return; p = p.parent; }
+    if (o === units.ledHalo || o === units.ledCore || o === units.dots || o === units.halos || o === units.markers) return;
+    if (o.parent?.name === 'planOverlay' || o.name === 'ground') return;
+    if (o.isInstancedMesh) { for (let i = 0; i < o.count; i++) if (!units.units[i]?.hidden) add(o, i); }
+    else add(o);
+  });
+  const data = new STLExporter().parse(tmp, { binary: true });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], { type: 'model/stl' }));
+  a.download = 'pinrose-gallery.stl';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 let toastTimer = 0;
 function toast(msg, warn = false) {
   const t = document.getElementById('toast');
@@ -277,7 +382,7 @@ function pick(x, y, tol = 14) {
     ray.setFromCamera(toNDC(x, y), cam);
     const hits = ray.intersectObjects([units.cover, units.bracket, units.funnel, ...room.wallMeshes.filter((m) => m.visible && m.material !== room.ghostMat)], false);
     if (hits.length) {
-      if (hits[0].object.isInstancedMesh) return hits[0].instanceId;
+      if (hits[0].object.isInstancedMesh && !units.units[hits[0].instanceId]?.hidden) return hits[0].instanceId;
       maxDist = hits[0].distance + 0.1; // a wall is in front: only units before it are pickable
     }
   }
@@ -285,6 +390,7 @@ function pick(x, y, tol = 14) {
   const camDir = cam.getWorldDirection(new THREE.Vector3());
   const rel = new THREE.Vector3();
   for (let i = 0; i < units.units.length; i++) {
+    if (units.units[i].hidden) continue;
     let p;
     if (app.mode === 'plan') {
       units.markers.getMatrixAt(i, _mm);
@@ -357,6 +463,7 @@ addEventListener('pointerup', (e) => {
     const x0 = Math.min(e.clientX, d.x), x1 = Math.max(e.clientX, d.x), y0 = Math.min(e.clientY, d.y), y1 = Math.max(e.clientY, d.y);
     const hit = [];
     for (let i = 0; i < units.units.length; i++) {
+      if (units.units[i].hidden) continue;
       units.markers.getMatrixAt(i, _mm);
       const p = tmpV.setFromMatrixPosition(_mm).project(ortho);
       const sx = ((p.x + 1) / 2) * r.width + r.left, sy = ((1 - p.y) / 2) * r.height + r.top;
@@ -391,6 +498,7 @@ function dragUnit(i, x, y) {
   const q = room.nearestMountable(px, py);
   if (!q) return;
   u.wall = q.wall.id; u.s = q.s; u.h = hcm;
+  if (app.snapToProfiles) snapUnit(u, 60);
   units.refresh();
   ui.refreshSelection();
 }
@@ -433,6 +541,7 @@ function tick(now) {
   } else if (app.mode === 'overview') orbit.update();
   else planCtl.update();
   units.animate(dt);
+  partitions.update(dt);
   room.cutaway(persp.position, app.mode === 'overview' && app.cutaway);
   const cam = activeCam();
   renderer.render(scene, cam);
@@ -450,7 +559,9 @@ function tick(now) {
     toast('Failed to load unit model: ' + err.message, true);
     throw err;
   }
-  setUnits(generateLayout(room, { seed: app.seed }));
+  const first = generateLayout(room, { seed: app.seed });
+  snapList(first);
+  setUnits(first);
   ui.setMode('overview');
   units.dots.visible = app.unitDots;
   showLabels();
@@ -460,7 +571,7 @@ function tick(now) {
 })();
 
 // test / console hooks
-window.__sim = { app, THREE, scene, persp, ortho, orbit, walk, units, room, lighting, setMode, select, mulberry32, renderer,
+window.__sim = { app, grid, partitions, snapList, THREE, scene, persp, ortho, orbit, walk, units, room, lighting, setMode, select, mulberry32, renderer,
   // benchmark helper: n synchronous animate+render passes, returns ms per frame (includes GPU via readPixels sync)
   bench(n = 60) {
     const gl = renderer.getContext(), px = new Uint8Array(4);

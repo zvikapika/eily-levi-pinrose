@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CM } from './room.js';
+import { zoneOf } from './grid.js';
 
 export const UNIT_PARAMS = {
   // funnel pivot on the unit axis, metres from the wall plane; overwritten on load from the ring's back face (43.5 mm in v1)
@@ -43,6 +44,14 @@ function makeFunnelGeometry() {
     p.setX(i, p.getX(i) + k * z * z);
   }
   g.computeVertexNormals();
+  // two darker seams so the rotation reads even from across the room
+  const col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const a = Math.atan2(p.getY(i), p.getX(i));
+    const seam = Math.abs(Math.sin(a)) > 0.93 ? 0.62 : 1;
+    col.set([seam, seam, seam], i * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   return g;
 }
 
@@ -60,6 +69,7 @@ export class Units {
     this._m = new THREE.Matrix4();
     this._m2 = new THREE.Matrix4();
     this._q = new THREE.Quaternion();
+    this.led = { on: false, colour: '#ffd9a0', intensity: 0.8, zone: 'inner' };
   }
 
   async load(url) {
@@ -82,7 +92,7 @@ export class Units {
     this.geos = { ...geos, funnel: makeFunnelGeometry() };
 
     const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0 });
-    const tan = new THREE.MeshStandardMaterial({ color: 0xead6aa, roughness: 0.7, side: THREE.DoubleSide });
+    const tan = new THREE.MeshStandardMaterial({ color: 0xead6aa, roughness: 0.7, side: THREE.DoubleSide, vertexColors: true });
     const ringMat = new THREE.MeshStandardMaterial({ color: 0xf0ede6, roughness: 0.5 });
     const mk = (geo, mat, name) => {
       const m = new THREE.InstancedMesh(geo, mat, this.capacity);
@@ -121,7 +131,15 @@ export class Units {
     this.dots.visible = false;
     for (let i = 0; i < this.capacity; i++) this.dots.setColorAt(i, COLORS.markerNormal);
     this.group.add(this.dots);
+    // LED inside the unit (inner space only): bright core in the funnel + soft additive halo on the wall
+    const core = new THREE.CircleGeometry(0.012, 20).translate(0, 0, UNIT_PARAMS.pivotZ + 0.026);
+    this.ledCore = new THREE.InstancedMesh(core, new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), this.capacity);
+    this.ledHalo = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.6, 0.6).translate(0, 0, 0.003),
+      new THREE.MeshBasicMaterial({ map: haloTexture(), color: 0xffffff, toneMapped: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), this.capacity);
+    for (const m of [this.ledCore, this.ledHalo]) { m.count = 0; m.frustumCulled = false; this.group.add(m); for (let i = 0; i < this.capacity; i++) m.setColorAt(i, new THREE.Color(0)); }
   }
+
+  setLed(p) { Object.assign(this.led, p); this.refresh(); }
 
   setUnits(units) {
     this.units = units;
@@ -164,12 +182,19 @@ export class Units {
 
   refresh() {
     const n = this.units.length;
-    for (const mesh of [this.bracket, this.cover, this.ring, this.funnel, this.markers, this.dots]) mesh.count = n;
+    for (const mesh of [this.bracket, this.cover, this.ring, this.funnel, this.markers, this.dots, this.ledCore, this.ledHalo]) mesh.count = n;
     const H = this.room.wallHeight * CM + 0.04;
     for (let i = 0; i < n; i++) {
       const u = this.units[i];
       this.clampUnit(u);
       const m = (this.baseMatrices[i] = this.unitMatrix(u, this.baseMatrices[i] ?? new THREE.Matrix4()));
+      const pz = this.room.pointAt(this.room.wall(u.wall), u.s);
+      u.zone = zoneOf(this.room, pz.x, pz.y);
+      if (u.hidden) m.multiply(this._zero ??= new THREE.Matrix4().makeScale(1e-6, 1e-6, 1e-6));
+      const glow = this.led.on && !u.hidden && u.zone === this.led.zone;
+      const lc = glow ? new THREE.Color(this.led.colour).multiplyScalar(this.led.intensity) : new THREE.Color(0);
+      this.ledCore.setMatrixAt(i, m); this.ledCore.setColorAt(i, glow ? lc.clone().multiplyScalar(2.5) : lc);
+      this.ledHalo.setMatrixAt(i, m); this.ledHalo.setColorAt(i, lc);
       this.bracket.setMatrixAt(i, m);
       this.cover.setMatrixAt(i, m);
       const sel = this.selected.has(i);
@@ -177,6 +202,7 @@ export class Units {
       const w = this.room.wall(u.wall);
       const p = this.room.pointAt(w, u.s);
       this._m2.makeTranslation((p.x + p.n[0] * 14) * CM, H, (p.y + p.n[1] * 14) * CM);
+      if (u.hidden) this._m2.multiply(this._zero);
       this.markers.setMatrixAt(i, this._m2);
       this.markers.setColorAt(i, sel ? COLORS.markerSelected : u.on ? COLORS.markerNormal : COLORS.markerOff);
       this._m2.copy(m).multiply(this._dotOffset ??= new THREE.Matrix4().makeTranslation(0, 0.05, 0.0008));
@@ -186,14 +212,14 @@ export class Units {
     // halos for the selection
     let k = 0;
     for (const i of this.selected) {
-      if (i >= n) continue;
+      if (i >= n || this.units[i].hidden) continue;
       this._m2.copy(this.baseMatrices[i]);
       this._m2.multiply(new THREE.Matrix4().makeTranslation(0, 0.05, 0.002));
       this._m2.multiply(new THREE.Matrix4().makeScale(1.0, 1.0, 1));
       this.halos.setMatrixAt(k++, this._m2);
     }
     this.halos.count = k;
-    for (const mesh of [this.bracket, this.cover, this.markers, this.halos, this.dots]) {
+    for (const mesh of [this.bracket, this.cover, this.markers, this.halos, this.dots, this.ledCore, this.ledHalo]) {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
@@ -225,4 +251,20 @@ export class Units {
   setPlanMarkersVisible(v) {
     this.markers.visible = v;
   }
+}
+
+function haloTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,255,255,0.9)');
+  gr.addColorStop(0.12, 'rgba(255,255,255,0.5)');
+  gr.addColorStop(0.4, 'rgba(255,255,255,0.12)');
+  gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }

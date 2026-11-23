@@ -84,6 +84,12 @@ export function buildUI(app) {
     fillWalls(wallSel, true);
     s.body.append(info,
       h('div', { class: 'btns' },
+        h('button', { onclick: () => app.setAllMotors(true), class: 'hi' }, '▶ All motors on'),
+        h('button', { onclick: () => app.setAllMotors(false) }, '■ All motors off'),
+        h('button', { onclick: () => app.editSelected((u) => { u.hidden = true; }) }, 'Hide selected'),
+        h('button', { onclick: () => { units.units.forEach((u) => (u.hidden = false)); units.refresh(); ui.refreshSelection(); app.autosave(); } }, 'Show all'),
+      ),
+      h('div', { class: 'btns' },
         h('button', { onclick: () => app.select([...units.units.keys()]) }, 'All'),
         h('button', { onclick: () => app.select([]) }, 'None'),
         h('button', { onclick: () => app.select([...units.units.keys()].filter((i) => !units.selected.has(i))) }, 'Invert'),
@@ -102,14 +108,17 @@ export function buildUI(app) {
     const dirSel = h('select', { onchange: () => app.editSelected((u) => { u.dir = dirSel.value; }) },
       h('option', { value: 'cw' }, 'clockwise (facing wall)'), h('option', { value: 'ccw' }, 'counter-clockwise'), h('option', { value: '', disabled: true }, 'mixed'));
     const onChk = h('input', { type: 'checkbox', onchange: () => app.editSelected((u) => { u.on = onChk.checked; }) });
+    const hidChk = h('input', { type: 'checkbox', onchange: () => app.editSelected((u) => { u.hidden = hidChk.checked; }) });
     props.append(
       h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Wall'), moveWall),
       fS.row, fH.row, fR.row, fP.row,
       h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Direction'), dirSel),
       h('label', { class: 'row chk' }, onChk, ' Motor on'),
+      h('label', { class: 'row chk' }, hidChk, ' Hidden (remove from the wall)'),
       h('div', { class: 'btns' },
         h('button', { onclick: () => app.editSelected((u) => { u.dir = u.dir === 'cw' ? 'ccw' : 'cw'; }) }, 'Reverse dir'),
         h('button', { onclick: () => app.editSelected((u) => { u.on = !u.on; }) }, 'Toggle on/off'),
+        h('button', { onclick: () => app.snapSelected(), title: 'Move each selected unit so its tip sits on the nearest 17x17 profile on its wall' }, 'Attach to profile'),
       ),
     );
 
@@ -144,8 +153,10 @@ export function buildUI(app) {
     ui.refreshSelection = () => {
       const sel = [...units.selected].sort((a, b) => a - b).map((i) => units.units[i]);
       props.classList.toggle('disabled', sel.length === 0);
+      const nh = units.units.filter((u) => u.hidden).length;
+      const stats = `<b>${units.units.length - nh}</b> units on the walls${nh ? ` · ${nh} hidden` : ''} · motors on: ${units.units.filter((u) => u.on && !u.hidden).length}`;
       if (!sel.length) {
-        info.innerHTML = `<b>${units.units.length}</b> units · nothing selected`;
+        info.innerHTML = `${stats}<br><span class="dim">nothing selected</span>`;
         return;
       }
       const walls = {};
@@ -169,6 +180,9 @@ export function buildUI(app) {
       const o = agg(sel.map((u) => u.on));
       onChk.indeterminate = o.mixed;
       onChk.checked = !o.mixed && o.v;
+      const hd = agg(sel.map((u) => !!u.hidden));
+      hidChk.indeterminate = hd.mixed;
+      hidChk.checked = !hd.mixed && hd.v;
     };
   }
 
@@ -188,6 +202,119 @@ export function buildUI(app) {
     panel.append(s.el);
   }
 
+  // ---------------------------------------------------------------- wall profiles
+  {
+    const { grid } = app;
+    const s = section('Wall profiles 17×17 (electric channel)', false);
+    const info = h('div', { class: 'info' });
+    const pick = h('select', {});
+    const fields = h('div', { class: 'props' });
+    const wallOf = h('select', {});
+    for (const w of room.walls) if (w.kind === 'target' || w.kind === 'optional') wallOf.append(h('option', { value: w.id }, `${w.id} (${Math.round(w.length)} cm)`));
+    const cur = () => grid.profiles.find((p) => p.id === pick.value);
+    const upd = (fn) => () => { const p = cur(); if (!p) return; fn(p); grid.clampProfile(p); grid.buildProfiles(); refreshFields(); app.autosave(); };
+    const dirSel = h('select', { onchange: upd((p) => { p.dir = dirSel.value; if (p.dir === 'h') { p.h0 = p.h1 = (p.h0 + p.h1) / 2; p.s1 = p.s0 + 100; } else { p.s1 = p.s0; p.h0 = 0; p.h1 = room.wallHeight; } }) },
+      h('option', { value: 'v' }, 'vertical'), h('option', { value: 'h' }, 'horizontal'));
+    wallOf.addEventListener('change', upd((p) => { p.wall = wallOf.value; }));
+    const fS0 = numRow('Start along', { min: 0, max: 2000, unit: 'cm', onChange: (v) => upd((p) => { p.s0 = v; if (p.dir === 'v') p.s1 = v; })() });
+    const fS1 = numRow('End along', { min: 0, max: 2000, unit: 'cm', onChange: (v) => upd((p) => { p.s1 = v; })() });
+    const fH0 = numRow('Bottom / height', { min: 0, max: 600, unit: 'cm', onChange: (v) => upd((p) => { p.h0 = v; if (p.dir === 'h') p.h1 = v; })() });
+    const fH1 = numRow('Top', { min: 0, max: 600, unit: 'cm', onChange: (v) => upd((p) => { p.h1 = v; })() });
+    const refreshFields = () => {
+      const p = cur();
+      fields.classList.toggle('disabled', !p);
+      if (p) {
+        wallOf.value = p.wall; dirSel.value = p.dir;
+        const L = room.wall(p.wall).length;
+        fS0.setRange(0, Math.round(L)); fS1.setRange(0, Math.round(L)); fH0.setRange(0, room.wallHeight); fH1.setRange(0, room.wallHeight);
+        fS0.set(Math.round(p.s0)); fS1.set(Math.round(p.s1)); fH0.set(Math.round(p.h0)); fH1.set(Math.round(p.h1));
+        fS1.row.style.display = p.dir === 'h' ? '' : 'none';
+        fH1.row.style.display = p.dir === 'v' ? '' : 'none';
+      }
+      const att = units.units.filter((u) => !u.hidden && grid.attachedTo(u)).length;
+      const vis = units.units.filter((u) => !u.hidden).length;
+      info.innerHTML = `<b>${grid.profiles.length}</b> profiles · total <b>${(grid.totalLengthCm() / 100).toFixed(1)} m</b><br><span class="dim">${att} of ${vis} units sit on a profile</span>`;
+    };
+    const fillPick = (sel) => {
+      pick.innerHTML = '';
+      pick.append(h('option', { value: '' }, '— pick a profile —'));
+      for (const p of grid.profiles) pick.append(h('option', { value: p.id }, `${p.id} · ${p.wall} · ${p.dir === 'v' ? `vertical at ${Math.round(p.s0)} cm` : `horizontal at ${Math.round(p.h0)} cm high`}`));
+      pick.value = sel ?? '';
+      grid.select(pick.value || null);
+      refreshFields();
+    };
+    pick.addEventListener('change', () => { grid.select(pick.value || null); refreshFields(); });
+    const addProfile = (dir) => {
+      const w = room.wall(wallOf.value) ?? room.mountableWalls()[0];
+      const p = dir === 'v' ? { id: grid.newId(), wall: w.id, dir, s0: Math.round(w.length / 2), s1: Math.round(w.length / 2), h0: 0, h1: room.wallHeight }
+        : { id: grid.newId(), wall: w.id, dir, s0: 0, s1: Math.round(w.length), h0: 200, h1: 200 };
+      grid.profiles.push(p);
+      fillPick(p.id); app.autosave();
+    };
+    fields.append(
+      h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Wall'), wallOf),
+      h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Direction'), dirSel),
+      fS0.row, fS1.row, fH0.row, fH1.row,
+      h('div', { class: 'btns' },
+        h('button', { onclick: () => { const p = cur(); if (!p) return; grid.profiles = grid.profiles.filter((q) => q !== p); fillPick(); app.autosave(); } }, 'Delete profile'),
+        h('button', { onclick: () => { const p = cur(); if (!p) return; const q = { ...p, id: grid.newId() }; if (q.dir === 'v') { q.s0 += 50; q.s1 = q.s0; } else { q.h0 += 30; q.h1 = q.h0; } grid.profiles.push(q); fillPick(q.id); app.autosave(); } }, 'Duplicate (+50 cm / +30 cm)'),
+      ));
+    const cg = h('input', { type: 'checkbox', checked: true, onchange: (e) => grid.setCeilingGridVisible(e.target.checked) });
+    const pv = h('input', { type: 'checkbox', checked: true, onchange: (e) => grid.setProfilesVisible(e.target.checked) });
+    const sn = h('input', { type: 'checkbox', checked: app.snapToProfiles, onchange: (e) => (app.snapToProfiles = e.target.checked) });
+    s.body.append(info,
+      h('label', { class: 'row chk' }, cg, ' Ceiling grid (existing 4×4 cm metal)'),
+      h('label', { class: 'row chk' }, pv, ' Wall profiles'),
+      h('label', { class: 'row chk' }, sn, ' Dragged units snap onto profiles'),
+      h('div', { class: 'btns' },
+        h('button', { onclick: () => { app.snapAll(); refreshFields(); } }, 'Attach all units'),
+        h('button', { onclick: () => addProfile('v') }, '+ Vertical'),
+        h('button', { onclick: () => addProfile('h') }, '+ Horizontal'),
+        h('button', { onclick: () => { grid.setProfiles(grid.defaultProfiles()); fillPick(); app.autosave(); }, title: 'Vertical runs where the ceiling-grid lines meet the walls + one run under the ceiling' }, 'Reset to grid'),
+      ),
+      h('div', { class: 'row' }, pick), fields,
+      h('div', { class: 'help' }, 'Add a profile on the wall chosen above, then set its position. The unit tip (wire exit) sits on the profile: under a horizontal run the tip points up, beside a vertical run it points sideways.'),
+    );
+    ui.refreshProfiles = () => fillPick(pick.value);
+    fillPick();
+    panel.append(s.el);
+  }
+
+  // ---------------------------------------------------------------- partitions
+  if (app.partitions.enabled) {
+    const P = app.partitions, st = P.state;
+    const s = section('Partitions (divider)', false);
+    const info = h('div', { class: 'info' });
+    const manual = h('div', { class: 'props' });
+    const refresh = () => {
+      const D = P.D;
+      info.innerHTML = `<b>${st.count}</b> partitions × ${st.widthCm} cm, pivots every ${D.spacing.toFixed(0)} cm<br>` +
+        `<span class="dim">mechanism: lever ${D.Lv} cm, crank r ${D.r.toFixed(1)} cm, rod ${D.c.toFixed(0)} cm · swing ${st.minDeg}°–${st.maxDeg}° · never closer than ${P.minGapToClosedDeg().toFixed(0)}° to closed</span>`;
+      manual.innerHTML = '';
+      manual.classList.toggle('disabled', st.mechanism);
+      for (let i = 0; i < st.count; i++) {
+        manual.append(numRow(`Panel ${i + 1}`, { min: 0, max: 360, value: Math.round(st.manual[i] ?? st.minDeg), unit: '°', onChange: (v) => { st.manual[i] = v; P.apply(); app.autosave(); } }).row);
+      }
+    };
+    const chk = (label, key, fn) => h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: st[key], onchange: (e) => { st[key] = e.target.checked; fn?.(e.target.checked); P.apply(); refresh(); app.autosave(); } }), label);
+    s.body.append(info,
+      chk(' Show partitions', 'visible', (v) => P.setVisible(v)),
+      chk(' Mechanism drives all panels together (motor on the inner ceiling)', 'mechanism'),
+      chk(' Mechanism motor running', 'running'),
+      numRow('Cycle time', { min: 5, max: 600, value: st.periodS, unit: 's', onChange: (v) => { st.periodS = v; app.autosave(); } }).row,
+      numRow('Swing from', { min: 5, max: 175, value: st.minDeg, unit: '°', onChange: (v) => { st.minDeg = v; P.rebuild(); refresh(); app.autosave(); } }).row,
+      numRow('Swing to', { min: 10, max: 180, value: st.maxDeg, unit: '°', onChange: (v) => { st.maxDeg = v; P.rebuild(); refresh(); app.autosave(); } }).row,
+      numRow('Count', { min: 1, max: 10, value: st.count, onChange: (v) => { P.setCount(v); refresh(); app.autosave(); } }).row,
+      numRow('Width', { min: 40, max: 150, value: st.widthCm, unit: 'cm', onChange: (v) => { P.setWidth(v); app.autosave(); } }).row,
+      h('div', { class: 'sub' }, 'Manual angle per panel (mechanism off), 0° = closed in line'),
+      manual,
+      h('div', { class: 'help' }, 'Angles are measured from the divider line. With the mechanism on, all panels share one angle that swings between the two limits; the crank turns one way continuously, so the panels can never all be closed.'),
+    );
+    ui.refreshPartitions = refresh;
+    refresh();
+    panel.append(s.el);
+  }
+
   // ---------------------------------------------------------------- lighting
   {
     const s = section('Lighting', false);
@@ -204,7 +331,8 @@ export function buildUI(app) {
         const p = sp.p;
         const upd = (k) => (v) => { p[k] = v; lighting.apply(sp); app.autosave(); };
         const on = h('input', { type: 'checkbox', checked: p.on, onchange: (e) => upd('on')(e.target.checked) });
-        const d = h('details', { class: 'spot' }, h('summary', {}, on, ` Track light ${i + 1}`),
+        const d = h('details', { class: 'spot' }, h('summary', {}, on, ` Track light ${i + 1} · ${p.zone === 'inner' ? 'inner' : 'outer'} space`,
+          h('button', { class: 'mini', onclick: (e) => { e.preventDefault(); lighting.removeSpot(i); renderSpots(); app.autosave(); } }, '✕')),
           numRow('Pos x', { min: -100, max: 2300, value: p.x, unit: 'cm', onChange: upd('x') }).row,
           numRow('Pos y', { min: -100, max: 1200, value: p.y, unit: 'cm', onChange: upd('y') }).row,
           numRow('Aim x', { min: -100, max: 2300, value: p.aimX, unit: 'cm', onChange: upd('aimX') }).row,
@@ -220,7 +348,29 @@ export function buildUI(app) {
     };
     ui.renderSpots = renderSpots;
     renderSpots();
-    s.body.append(amb.row, exp.row,
+    const zoneBox = (id, label) => {
+      const z = lighting.zones[id];
+      const k = numRow('Colour temp', { min: 0, max: 6500, step: 50, value: z.kelvin, unit: 'K', onChange: (v) => { lighting.setZone(id, { kelvin: v }); app.autosave(); } });
+      return h('div', { class: 'spot' },
+        h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: z.on, onchange: (e) => { lighting.setZone(id, { on: e.target.checked }); app.autosave(); } }), h('b', {}, ` ${label}`)),
+        numRow('Dimmer', { min: 0, max: 2, step: 0.01, value: z.dim, onChange: (v) => { lighting.setZone(id, { dim: v }); app.autosave(); } }).row,
+        k.row,
+        h('div', { class: 'help' }, 'Colour temp 0 = each light keeps its own.'),
+        h('div', { class: 'btns' }, h('button', { onclick: () => { lighting.addSpot(id); renderSpots(); app.autosave(); } }, `+ Light in ${id} space`)));
+    };
+    const L = units.led;
+    const led = h('div', { class: 'spot' },
+      h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: L.on, onchange: (e) => units.setLed({ on: e.target.checked }) }), h('b', {}, ' LED inside the units (inner space only)')),
+      h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'LED colour'), h('input', { type: 'color', value: L.colour, oninput: (e) => units.setLed({ colour: e.target.value }) })),
+      numRow('LED level', { min: 0, max: 2, step: 0.01, value: L.intensity, onChange: (v) => units.setLed({ intensity: v }) }).row,
+      h('div', { class: 'help' }, 'Tip: dim the inner-space lighting to see the LEDs.'));
+    s.body.append(
+      h('div', { class: 'sub' }, 'Two lighting systems'),
+      zoneBox('inner', 'Inner space (68 m², west)'),
+      zoneBox('outer', 'Outer space (85 m², east)'),
+      led,
+      h('div', { class: 'sub' }, 'General'),
+      amb.row, exp.row,
       h('label', { class: 'row chk' }, sh, ' Shadows'),
       h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Wall colour'), wc, h('span', { class: 'lbl' }, ' Floor'), fc),
       h('div', { class: 'sub' }, 'Track lights (mounted 20 cm below the ceiling; positions in plan cm)'),
@@ -241,7 +391,7 @@ export function buildUI(app) {
     const stamp = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     s.body.append(
       h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Seed'), seed, h('span', { class: 'lbl' }, 'Units'), count,
-        h('button', { onclick: () => { app.seed = +seed.value; app.setUnits(generateLayout(room, { seed: app.seed, count: +count.value })); app.toast(`Generated ${count.value} units, seed ${seed.value}`); } }, 'Generate')),
+        h('button', { onclick: () => { app.seed = +seed.value; app.setUnits(generateLayout(room, { seed: app.seed, count: +count.value })); if (app.snapToProfiles) app.snapAll(); app.toast(`Generated ${count.value} units, seed ${seed.value}`); } }, 'Generate')),
       h('div', { class: 'btns' },
         h('button', { onclick: () => { localStorage.setItem('pinrose.layout', layoutToJSON(app)); app.toast('Saved in this browser'); } }, 'Save (browser)'),
         h('button', { onclick: () => { const t = localStorage.getItem('pinrose.layout'); if (!t) return app.toast('Nothing saved yet', true); app.loadLayout(parseLayout(t)); app.toast('Loaded from browser'); } }, 'Load (browser)'),
@@ -251,11 +401,13 @@ export function buildUI(app) {
         h('button', { onclick: () => download(`pinrose-layout-${stamp()}.json`, layoutToJSON(app)) }, 'Download JSON'),
         h('button', { onclick: () => file.click() }, 'Upload JSON'), file,
         h('button', { onclick: () => download(`pinrose-install-${stamp()}.csv`, layoutToCSV(room, units.units), 'text/csv') }, 'Export CSV'),
+        h('button', { onclick: () => app.exportSTL(), title: 'Static 3D snapshot of the whole space (mm). SketchUp for Web imports STL only with a subscription.' }, 'Export 3D (STL)'),
       ),
       h('div', { class: 'help' }, 'CSV: distance along wall is from the first point of the wall in room.json; height = funnel centre above floor; orientation = roll of the teardrop tip from vertical, counter-clockwise positive, facing the wall.'),
     );
     panel.append(s.el);
   }
 
+  ui.refreshAll = () => { ui.refreshProfiles?.(); ui.refreshPartitions?.(); ui.refreshSelection?.(); };
   return ui;
 }

@@ -1,6 +1,7 @@
 // Scene lighting: ambient + a few ceiling track spots with colour temperature.
 import * as THREE from 'three';
 import { CM } from './room.js';
+import { zoneOf } from './grid.js';
 
 // Tanner Helland's blackbody approximation, 1000-40000 K -> linear-ish sRGB colour
 export function kelvinToColor(k) {
@@ -35,6 +36,8 @@ export class Lighting {
     this.shadows = true;
     this.exposure = 1.0;
     this.spots = [];
+    // two separate lighting systems (inner / outer space): master switch, dimmer, optional common colour temperature
+    this.zones = { inner: { on: true, dim: 1, kelvin: 0 }, outer: { on: true, dim: 1, kelvin: 0 } };
     this.fixtureGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.14, 16);
     this.fixtureMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4, metalness: 0.6 });
     this.setSpots(DEFAULT_SPOTS);
@@ -61,11 +64,13 @@ export class Lighting {
 
   apply(s) {
     const p = s.p, H = this.room.wallHeight - 20;
-    s.light.visible = p.on;
+    p.zone = zoneOf(this.room, p.x, p.y);
+    const z = this.zones[p.zone] ?? { on: true, dim: 1, kelvin: 0 };
+    s.light.visible = p.on && z.on;
     s.light.position.set(p.x * CM, H * CM, p.y * CM);
     s.light.target.position.set(p.aimX * CM, p.aimH * CM, p.aimY * CM);
-    s.light.intensity = p.intensity;
-    s.light.color.copy(kelvinToColor(p.kelvin));
+    s.light.intensity = p.intensity * z.dim;
+    s.light.color.copy(kelvinToColor(z.kelvin > 0 ? z.kelvin : p.kelvin));
     s.light.angle = THREE.MathUtils.degToRad(p.angle / 2); // UI angle = full beam angle
     s.light.penumbra = p.penumbra;
     s.fixture.position.copy(s.light.position);
@@ -74,6 +79,12 @@ export class Lighting {
     s.fixture.visible = true;
   }
   applyAll() { this.spots.forEach((s) => this.apply(s)); }
+  setZone(id, patch) { Object.assign(this.zones[id], patch); this.applyAll(); }
+  addSpot(zone) {
+    const c = zone === 'inner' ? { x: 430, y: 430, aimX: 430, aimY: 0 } : { x: 1350, y: 430, aimX: 1350, aimY: 0 };
+    this.setSpots([...this.spots.map((s) => s.p), { on: true, ...c, aimH: 170, intensity: 35, kelvin: 3500, angle: 60, penumbra: 0.7 }]);
+  }
+  removeSpot(i) { this.setSpots(this.spots.filter((_, k) => k !== i).map((s) => s.p)); }
 
   setAmbient(v) { this.ambient.intensity = v; this.hemi.intensity = v * 0.6; }
   setExposure(v) { this.exposure = v; this.renderer.toneMappingExposure = v; }
@@ -93,6 +104,7 @@ export class Lighting {
       wallColor: '#' + this.room.wallMat.color.getHexString(),
       floorColor: '#' + this.room.floorMat.color.getHexString(),
       spots: this.spots.map((s) => ({ ...s.p })),
+      zones: JSON.parse(JSON.stringify(this.zones)),
     };
   }
   fromJSON(d) {
@@ -101,6 +113,7 @@ export class Lighting {
     if (d.exposure !== undefined) this.setExposure(d.exposure);
     if (d.wallColor) { this.room.wallMat.color.set(d.wallColor); this.room.excludedMat.color.set(d.wallColor).multiplyScalar(0.94); }
     if (d.floorColor) this.room.floorMat.color.set(d.floorColor);
+    if (d.zones) for (const k of Object.keys(this.zones)) Object.assign(this.zones[k], d.zones[k] ?? {});
     if (Array.isArray(d.spots)) this.setSpots(d.spots);
     if (d.shadows !== undefined) this.setShadows(d.shadows);
   }

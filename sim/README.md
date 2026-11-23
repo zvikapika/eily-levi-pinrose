@@ -134,3 +134,16 @@ Units share geometry through `InstancedMesh` (bracket, cover, ring and funnel ar
 funnel and ring matrices update each frame. Measured in Chrome on an M2 (Metal), 1600×900: **~4.7 ms per frame
 with 6 shadow-casting spots, ~2.3 ms without** (synchronous render including GPU, `__sim.bench()` in the console).
 That leaves plenty of headroom for 60 fps.
+
+## Round 2 (Eily, 2026-11-23)
+- **Glass facade:** the slanted south wall (`S-vitrine`, `S-vitrine-foyer`) is `kind: glass`. It is drawn as glass, no units go on it, and a double glass door with 2 handles (position assumed, `glassDoors` in room.json) is in the entry part. Saved layouts with units on the glass get those units moved to the nearest wall when they load.
+- **Ceiling grid:** the existing 4×4 cm metal grid is drawn at the ceiling. The spacing is read off the 1:20 model (~3×3 cells per space) and is approximate (`ceilingGrid` in room.json).
+- **Wall profiles:** white 17×17 mm profiles (the electric channel) are drawn on the walls. By default there are vertical runs where the ceiling-grid lines meet the walls, plus one horizontal run 50 cm under the ceiling. Profiles can be added, edited, duplicated and deleted in the "Wall profiles" panel.
+- **Mounting on profiles:** units mount with the tip (wire exit) on a profile. A unit under a horizontal run points up; one beside a vertical run points sideways. "Attach all units" snaps every unit, and dragged units snap too (toggle).
+- **Hide units:** units can be hidden per unit, with "Hide selected" / "Show all". Hidden units are kept in the layout file and the CSV.
+- **Motors:** "All motors on/off" buttons. The funnel now has two darker seams, so the rotation is visible.
+- **Partitions:** 5 × 1 m rotating partitions on the divider, plus the linkage (motor on the inner ceiling, crank-rocker, 45°–90°, never closed). See `docs/partitions-mechanism.md`. Each panel can also be set by hand (0–360°) with the mechanism off.
+- **Lighting:** two lighting systems (inner / outer), each with a master switch, dimmer and common colour temperature. You can add or remove track lights per space.
+- **Unit LEDs:** an LED inside each unit, for the inner space only, with colour and level.
+- **Export 3D (STL):** a static snapshot of the whole space in mm, Z up, for SketchUp. SketchUp for Web imports STL only with a subscription; the free plan imports .skp only.
+- **Single-file build:** `bash tools/build_single.sh` → `dist-single/pinrose_gallery_sim.html`, which opens from disk with no server.

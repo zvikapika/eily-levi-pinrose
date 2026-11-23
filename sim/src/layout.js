@@ -54,12 +54,15 @@ export function layoutToJSON(state) {
   return JSON.stringify(
     {
       format: 'pinrose-layout',
-      version: 1,
+      version: 2,
       savedAt: new Date().toISOString(),
       room: { wallHeightCm: state.room.wallHeight, optionalWallsEnabled: state.room.optionalEnabled },
       seed: state.seed,
-      units: state.units.units,
+      units: state.units.units.map(({ zone, ...u }) => u),
       lighting: state.lighting.toJSON(),
+      profiles: state.grid?.toJSON(),
+      partitions: state.partitions?.toJSON(),
+      led: state.units.led,
     },
     null,
     2
@@ -71,13 +74,13 @@ export function parseLayout(text) {
   if (d.format !== 'pinrose-layout' || !Array.isArray(d.units)) throw new Error('Not a Pinrose layout file');
   for (const u of d.units) {
     for (const k of ['wall', 's', 'h']) if (u[k] === undefined) throw new Error(`unit ${u.id} missing "${k}"`);
-    u.rot ??= 0; u.rpm ??= 5; u.dir ??= 'cw'; u.on ??= true;
+    u.rot ??= 0; u.rpm ??= 5; u.dir ??= 'cw'; u.on ??= true; u.hidden ??= false;
   }
   return d;
 }
 
 export function layoutToCSV(room, units) {
-  const head = ['unit_id', 'wall_id', 'wall_label', 'distance_along_wall_cm', 'height_cm', 'orientation_deg', 'rpm', 'direction', 'on', 'plan_x_cm', 'plan_y_cm'];
+  const head = ['unit_id', 'wall_id', 'wall_label', 'distance_along_wall_cm', 'height_cm', 'orientation_deg', 'rpm', 'direction', 'on', 'plan_x_cm', 'plan_y_cm', 'zone', 'profile', 'hidden'];
   const rows = [head.join(',')];
   const order = [...units].sort((a, b) => (a.wall === b.wall ? a.s - b.s : a.wall.localeCompare(b.wall)));
   for (const u of order) {
@@ -85,7 +88,7 @@ export function layoutToCSV(room, units) {
     const p = room.pointAt(w, u.s);
     rows.push([
       u.id, u.wall, `"${w.label.replace(/"/g, "'")}"`, u.s.toFixed(1), u.h.toFixed(1), u.rot.toFixed(1),
-      u.rpm, u.dir, u.on ? 1 : 0, p.x.toFixed(1), p.y.toFixed(1),
+      u.rpm, u.dir, u.on ? 1 : 0, p.x.toFixed(1), p.y.toFixed(1), u.zone ?? '', u.profile ?? '', u.hidden ? 1 : 0,
     ].join(','));
   }
   return rows.join('\n') + '\n';

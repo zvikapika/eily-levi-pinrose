@@ -92,3 +92,11 @@ Letters refer to her marked screenshot of the cover seen from the open back.
 - **E** strap saddle + M3 bosses kept, **F** second saddle kept. Strap and ring unchanged.
 - Ring `pinruso` is a separate part that sits at the front face, in the opening (z 0–3).
 - `checks_v3.py`: all printables watertight / 1 body, no clashes, motor ≥ 1.0 mm to the walls, ALL_OK.
+
+## v4 — Eily round 2 (`pinrose_v4.py`, output `out_v4/`, `bash scripts/run_all_v4.sh`)
+- Every shell wall is a uniform **1.6 mm**, grown **outward** from the v3 inner wall (`WALL_T`). The inner size is the one that
+  matters, so the bracket, snaps and every inner feature are identical to v3. Outer 81.6 × 166.03 × 50.
+- Anti-rotation: a **2nd motor strap** (same part, print 2) + M3 insert boss pair + saddle at y = 81 (`STRAP2_Y`). It can't go at F
+  (y 100): the interior half-width there is ~17 mm, and the bosses need 20. The strap ears sit ≥ 0.6 mm from the walls.
+- Hardware per unit is now 4× M3 × 8 + 4× M3 heat-set inserts.
+- `checks_v4.py`: walls 1.600/1.600 mm, all printables watertight / 1 body, 0 clashes, motor ≥ 1.0 mm, ALL_OK.

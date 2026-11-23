@@ -79,3 +79,16 @@ Reference probes are in `scripts/`: `probe_refs.py`, `probe2.py` and `fit_bracke
 4. Ring position (in the bore, flush with the cup rim) and what holds it axially (it has 0.35 mm radial play and 6.8 mm free to the bracket).
 5. Attachment: snaps + friction plug OK, or does he want screws? Wall screws Ø4 countersunk? Should the big bracket hole stay filled?
 6. Lead size 3.0 × 1.5 (2 × Ø1.5) and the route straight into the wall behind the gate.
+
+## v3 — Eily's changes on the printed v2 sample (`pinrose_v3.py`, output `out_v3/`, `bash scripts/run_all_v3.sh`)
+Letters refer to her marked screenshot of the cover seen from the open back.
+- **A** shell +3 % in plan only: outer 80 × 161 → 82.4 × 165.83, height stays 50. Local wall thickness is kept exactly (each
+  inner-wall point moves with its nearest outer point; v1 walls vary 0.62–2.10 mm and still do). Front face 3 mm and bracket
+  plate 3 mm unchanged. Scale origin = cup centre, so the cup, motor, saddles, bosses, journals and crank don't move.
+  The bracket (back face) plate = the new inner rim outline (both holes still filled); its snap tabs follow the new walls.
+- **B** cup: same Ø, total height 20 mm from the front face including the slits (journals still at z 14.1).
+- **C** bulkhead removed. The motor is now located axially only by the strap clamp + saddles.
+- **D** rear stop rib + both strain-relief fins removed (the bracket's wire gate stays).
+- **E** strap saddle + M3 bosses kept, **F** second saddle kept. Strap and ring unchanged.
+- Ring `pinruso` is a separate part that sits at the front face, in the opening (z 0–3).
+- `checks_v3.py`: all printables watertight / 1 body, no clashes, motor ≥ 1.0 mm to the walls, ALL_OK.

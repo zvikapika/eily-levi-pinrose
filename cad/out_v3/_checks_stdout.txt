@@ -1,0 +1,282 @@
+{
+ "stl": {
+  "pinrus_v3.stl": {
+   "watertight": true,
+   "bodies": 1,
+   "non_manifold_edges": 0,
+   "volume": 51007.4,
+   "size": [
+    82.4,
+    165.83,
+    50.0
+   ]
+  },
+  "pinruswall_v3.stl": {
+   "watertight": true,
+   "bodies": 1,
+   "non_manifold_edges": 0,
+   "volume": 25340.7,
+   "size": [
+    78.31,
+    162.63,
+    16.0
+   ]
+  },
+  "motor_strap_v3.stl": {
+   "watertight": true,
+   "bodies": 1,
+   "non_manifold_edges": 0,
+   "volume": 1283.1,
+   "size": [
+    40.0,
+    13.0,
+    10.0
+   ]
+  },
+  "pinruso.stl": {
+   "watertight": true,
+   "bodies": 1,
+   "non_manifold_edges": 0,
+   "volume": 844.2,
+   "size": [
+    40.3,
+    40.3,
+    3.0
+   ]
+  }
+ },
+ "interference": {
+  "coverxbracket": {
+   "vol": 0.208,
+   "sliver": 0.001,
+   "status": "clear"
+  },
+  "coverxstrap": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "coverxring": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "coverxmotor": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "coverxcoupler_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "coverxcrank_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxstrap": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxring": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxmotor": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxcoupler_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "bracketxcrank_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "strapxring": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "strapxmotor": {
+   "vol": 0.21,
+   "sliver": 0.001,
+   "status": "clear"
+  },
+  "strapxcoupler_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "strapxcrank_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "ringxmotor": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "ringxcoupler_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "ringxcrank_sweep": {
+   "vol": 0.0,
+   "sliver": 0.0,
+   "status": "clear"
+  },
+  "motorxcoupler_sweep": {
+   "vol": 106.77,
+   "sliver": 1.619,
+   "status": "allowed (part inside part by design)"
+  },
+  "motorxcrank_sweep": {
+   "vol": 3.015,
+   "sliver": 0.522,
+   "status": "allowed (part inside part by design)"
+  },
+  "coupler_sweepxcrank_sweep": {
+   "vol": 14.069,
+   "sliver": 0.718,
+   "status": "allowed (part inside part by design)"
+  }
+ },
+ "clearance": {
+  "motor_to_v3_shell(walls+front)": [
+   1.003,
+   [
+    -42.89,
+    71.23,
+    4.0
+   ]
+  ],
+  "motor_to_bracket": [
+   15.887,
+   [
+    -49.89,
+    78.13,
+    23.57
+   ]
+  ],
+  "coupler_sweep_to_cover_v3": [
+   1.0,
+   [
+    -43.01,
+    39.0,
+    10.69
+   ]
+  ],
+  "coupler_sweep_to_strap": [
+   10.307,
+   [
+    -44.61,
+    53.0,
+    19.2
+   ]
+  ],
+  "crank_sweep_to_cup_wall(throw zone)": 1.138,
+  "throw_corner_radius_in_cup_plan": 14.494,
+  "throw_radial_clearance_to_cup_ID(analytic)": 5.746,
+  "crank_sweep_z_range": [
+   8.2,
+   21.8
+  ],
+  "journal_bottom_z": 14.1,
+  "journal_radial_play_each_side": 0.54,
+  "coupler_axial_gap_to_cup_OD": 1.0,
+  "bulkhead": "removed (C); motor located axially by the strap clamp + saddles only",
+  "shaft_engagement_in_coupler": 8.5,
+  "interior_width_at_motor_end": 27.1,
+  "motor_side_clearance_at_end": 2.262,
+  "motor_to_front_face": 1.0,
+  "motor_top_to_bracket_inner_face": 21.0,
+  "strap_top_to_bracket": 5.504,
+  "strap_to_bracket_min": [
+   14.534,
+   [
+    -51.95,
+    70.94,
+    25.11
+   ]
+  ],
+  "ring_OD_measured": 40.3,
+  "ring_position_z": [
+   -0.0,
+   3.0
+  ],
+  "ring_radial_clearance_in_front_opening": 0.355,
+  "crank_sweep_bottom_above_ring_top": 5.2,
+  "ring_to_crank_wire": [
+   7.198,
+   [
+    -42.4,
+    -2.24,
+    2.98
+   ]
+  ]
+ },
+ "insertion_motor_unit_from_back": {
+  "max_clash_vol": 0.0,
+  "status": "clear"
+ },
+ "bracket_insertion_overlap_by_dz(snap ride-over expected while dz < bump travel)": {
+  "0.3": 0.208,
+  "1": 6.721,
+  "2": 17.129,
+  "4": 11.278,
+  "6": 0.208,
+  "10": 0.208,
+  "14": 0.009
+ },
+ "rays": {
+  "gate_slot_through_bracket": [],
+  "wall_screw_hole_y15.5": [],
+  "wall_screw_hole_y95.0": [],
+  "insert_hole_-1_hits_from_top(z)": [
+   8.5,
+   -0.0
+  ],
+  "insert_hole_+1_hits_from_top(z)": [
+   8.5,
+   -0.0
+  ],
+  "front_opening_at_cup_centre(z hits cover)": [],
+  "back_closed_behind_cup(z hits bracket, 8 mm off the screw hole)": [
+   47.0,
+   50.0
+  ],
+  "back_closed_behind_cup_tip_side": [
+   47.0,
+   50.0
+  ],
+  "back_closed_at_old_small_hole": [
+   47.0,
+   50.0
+  ],
+  "cup_wall_top_z(ray down at cup OD-1)": [
+   20.0
+  ],
+  "outer_size_xy": [
+   82.4,
+   165.83
+  ],
+  "journal+1_bottom_z": [
+   14.1
+  ],
+  "journal-1_bottom_z": [
+   14.1
+  ]
+ },
+ "ALL_OK": true
+}

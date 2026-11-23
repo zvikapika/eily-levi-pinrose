@@ -34,6 +34,8 @@ CUP_H = 20.0                          # B: cup total height from the front face
 RING_AT_FRONT = True                  # ring sits in the front opening, z 0..3
 REMOVE = ("bulkhead", "rear_stop", "fin0", "fin1")   # C + D
 WALL_T = 1.6                          # v4: uniform wall, grown outward from the v3 inner wall
+SELF_TAP_HOLE_D = 2.5                 # v4: no heat-set inserts, M3 screws self-tap into the bosses
+V.INSERT_HOLE_D = SELF_TAP_HOLE_D
 STRAP2_Y = 81.0                       # v4: 2nd strap centre (cover-frame y)
 # ===========================================================================
 from pinrose_v2 import (AXIS_X, FLOOR_T, RIM_Z, CUP_OD_C, CUP_OD_R, CUP_ID_C, BRACKET_T, WALL_SCREW_Y, WALL_SCREW_D,

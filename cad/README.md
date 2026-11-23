@@ -98,5 +98,5 @@ Letters refer to her marked screenshot of the cover seen from the open back.
   matters, so the bracket, snaps and every inner feature are identical to v3. Outer 81.6 × 166.03 × 50.
 - Anti-rotation: a **2nd motor strap** (same part, print 2) + M3 insert boss pair + saddle at y = 81 (`STRAP2_Y`). It can't go at F
   (y 100): the interior half-width there is ~17 mm, and the bosses need 20. The strap ears sit ≥ 0.6 mm from the walls.
-- Hardware per unit is now 4× M3 × 8 + 4× M3 heat-set inserts.
+- Hardware per unit: 4× M3 × 8, self-tapping straight into the bosses (Ø2.5 pilot holes, `SELF_TAP_HOLE_D`, no heat-set inserts per Eily).
 - `checks_v4.py`: walls 1.600/1.600 mm, all printables watertight / 1 body, 0 clashes, motor ≥ 1.0 mm, ALL_OK.

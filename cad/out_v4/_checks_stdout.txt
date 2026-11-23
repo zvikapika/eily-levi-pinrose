@@ -4,7 +4,7 @@
    "watertight": true,
    "bodies": 1,
    "non_manifold_edges": 0,
-   "volume": 57527.5,
+   "volume": 57726.5,
    "size": [
     81.6,
     166.03,

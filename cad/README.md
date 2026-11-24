@@ -121,6 +121,7 @@ The v2–v4 standing snap tab broke at its root when Eily pulled the cover off. 
 Eily wants to bring the 17×17 electric channel into a unit at any position or angle, deciding on site. The jig guides an **18 × 17.5 mm U-notch from the rim** in the 1.6 mm PLA wall.
 - **Two shapes:** `notch_jig_straight.stl` for the straight sides and the tip; `notch_jig_round.stl` for the round end (inner R ≈ 41.5, with 0.8 mm play because that arc isn't a true circle).
 - **How it fits:** a U-channel that slides over the wall from the rim, with the top plate resting on the rim and a centre mark on the outer edge.
-- **Cutting guides:** two 1.0 mm saw slots whose bottoms stop the blade at 17.5 mm, two Ø2.5 corner-relief drill guides (tangent to the cut lines), and a window whose edge is the knife line for the bottom of the notch.
+- **Cutting guides:** two 1.0 mm saw slots whose bottoms stop the blade at 17.5 mm, two Ø2.5 corner-relief drill guides (tangent to the cut lines), and a 3 mm knife slit on the **outer cheek only** whose top edge is the knife line for the bottom of the notch.
+- **Strength (rev 2, after Eily noticed the middle hung on a sliver by the drill holes):** the inner cheek stays whole and a solid band runs under the knife slit (cheeks 30 mm deep). The material holding the middle part below the notch line went from 17 mm² to 64 mm² (`jig/weakest_section.py`).
 - **Virtual fit on v6** (`jig/fit_check.py`, `jig/ray_check.py`): 0 overlap with the cover. Play per side: 0.15 mm on the straight jig, ~0.4 mm on the round jig. Picture: `out_jig/notch_jig_views.png`.
 - Print with the top plate on the bed, no supports, 100 % infill.

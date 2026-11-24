@@ -10,7 +10,7 @@ Use (one jig per wall shape):
      pencil mark.
   2. Drill the 2 corner holes through the jig guides (Ø2.5 drill): the round corners stop the PLA from cracking.
   3. Saw down both saw slots (fine saw, blade <= 0.9 mm) until the blade stops on the slot bottom (17.5 mm).
-  4. Score the bottom line with a knife along the window edge (both faces), bend the tab out, file clean.
+  4. Score the bottom line with a knife along the top edge of the knife slit (outside face), bend the tab out, file clean.
 
 Print: top plate on the bed (file orientation), no supports, 100 % infill or 6 walls.
 Run: cad/.venv/bin/python cad/jig/notch_jig.py  -> cad/out_jig/
@@ -34,7 +34,8 @@ CORNER_D = 2.5          # corner relief holes (drill)
 TOP_T = 3.0             # top plate resting on the rim
 CHEEK_OUT = 4.0         # outer cheek thickness
 CHEEK_IN = 3.0          # inner cheek thickness (inside the cover)
-DEPTH = 25.0            # cheeks reach this far below the rim
+DEPTH = 30.0            # cheeks reach this far below the rim (a solid band below the knife slit holds the jig together)
+KNIFE_SLIT = 3.0        # height of the knife window under the notch line (its top edge = the knife guide)
 JIG_L = 40.0            # length along the wall (straight)
 GAP_STRAIGHT = 0.3      # play on the wall thickness
 GAP_ROUND = 0.8         # more play on the round end (its arc is not a perfect circle, +-0.6 mm)
@@ -102,7 +103,10 @@ def build(round_end=False):
     cheeks = zprism(foot.difference(wall), zt - 0.01, zb)
     jig = U(top, cheeks)
     cuts = [zprism(s.intersection(foot.buffer(1)), -1, z_slot) for s in slots]
-    cuts.append(zprism(window.intersection(foot.buffer(1)), z_slot, zb + 1))
+    # knife slit on the OUTER cheek only, not open to the bottom: the inner cheek stays whole, so the middle of the jig
+    # (top plate, drill guides, centre mark) hangs on the full inner cheek + the band under the slit, not on a sliver
+    outer = box(-100, WALL_T + gap / 2, 100, 100) if not round_end else box(-100, -100, 100, -(WALL_T + gap / 2) + 0.0)
+    cuts.append(zprism(window.intersection(foot.buffer(1)).intersection(outer), z_slot, z_slot + KNIFE_SLIT))
     cuts += holes
     cuts.append(zprism(mark, -1, 0.8))              # centre mark, printed into the top plate's outer edge
     jig = D(jig, *cuts)
@@ -114,4 +118,11 @@ if __name__ == "__main__":
         m = build(rnd)
         r = save(m, OUT / f"{name}.stl")
         nb = len(r.split(only_watertight=False))
-        print(name, "watertight", r.is_watertight, "bodies", nb, "size", np.round(r.extents, 2).tolist(), "vol", round(r.volume, 1))
+        # weakest link: smallest cross-section between the middle part and an end (planes across the jig at the slots)
+        secs = []
+        for xp in np.linspace(9.05, 9.95, 4):
+            for sgn in (1, -1):
+                sec = r.section(plane_origin=[sgn * xp, 0, 0], plane_normal=[1, 0, 0])
+                secs.append(0.0 if sec is None else sum(p.area for p in sec.to_2D()[0].polygons_full))
+        print(name, "watertight", r.is_watertight, "bodies", nb, "size", np.round(r.extents, 2).tolist(), "vol", round(r.volume, 1),
+              "min section at the saw slots mm2", round(min(secs), 1))

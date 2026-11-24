@@ -89,7 +89,12 @@ for (const w of room.walls) {
   const div = document.createElement('div');
   div.className = `wall-label ${w.kind}`;
   div.textContent = w.id;
-  div.title = w.label;
+  div.title = room.mountable(w) ? `${w.label} — click to work on this wall from the front` : w.label;
+  if (room.mountable(w)) {
+    div.style.pointerEvents = 'auto';
+    div.style.cursor = 'pointer';
+    div.addEventListener('click', (e) => { e.stopPropagation(); viewWall(w.id); });
+  }
   const o = new CSS2DObject(div);
   const mx = (g.a[0] + g.b[0]) / 2 + g.n[0] * 55, my = (g.a[1] + g.b[1]) / 2 + g.n[1] * 55;
   o.position.set(mx * CM, room.wallHeight * CM, my * CM);
@@ -97,7 +102,7 @@ for (const w of room.walls) {
 }
 scene.add(labels);
 // CSS2DRenderer only checks each label's own .visible, not its parent's
-function showLabels() { const v = app.mode === 'plan' && app.labelsOn; labels.children.forEach((o) => (o.visible = v)); }
+function showLabels() { const v = (app.mode === 'plan' || app.mode === 'overview') && app.labelsOn; labels.children.forEach((o) => (o.visible = v)); }
 
 // ------------------------------------------------------------------ app state
 const app = {
@@ -112,6 +117,7 @@ const app = {
     room.setWallHeight(v);
     labels.children.forEach((o) => (o.position.y = v * CM));
     lighting.applyAll();
+    lighting.buildFills();
     lighting.applyShadows();
     grid.build();
     partitions.rebuild();

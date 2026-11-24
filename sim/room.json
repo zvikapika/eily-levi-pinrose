@@ -398,32 +398,52 @@
     }
   ],
   "ceilingGrid": {
-    "_doc": "Existing ceiling grid, 4x4 cm metal profile (Eily). Lines are full-length in plan (cm) and clipped to each zone polygon. Spacing read off the 1:20 model (~3x3 cells per space) - APPROXIMATE, edit here.",
+    "_doc": [
+      "Existing ceiling grid (4x4 cm metal), per Eily's sketch on the plan view (2026-11-23): in each space a 3x3 grid about 80 cm from the walls, with cut (diagonal) corners.",
+      "Per zone: rectangle x0..x1, y0..y1 (plan cm) split into nx x ny cells; 'keep' = half-planes [a, b, c] meaning a*x + b*y >= c that cut the corners. APPROXIMATE - edit here."
+    ],
     "profileCm": 4,
     "colour": "#3a3a3c",
+    "insetCm": 80,
     "zones": {
       "inner": {
-        "x": [
-          287,
-          573
+        "x0": 80,
+        "x1": 780,
+        "y0": 80,
+        "y1": 780,
+        "nx": 3,
+        "ny": 3,
+        "keep": [
+          [
+            1,
+            1,
+            373
+          ],
+          [
+            -1,
+            -1,
+            -1340
+          ]
         ],
-        "y": [
-          287,
-          573
-        ]
+        "note": "NW cut parallel to the NW diagonal wall, 80 cm off it (x + y >= 260 + 80*sqrt2); SE cut x + y <= 1340 read off the sketch"
       },
       "outer": {
-        "x": [
-          1191,
-          1523
+        "x0": 940,
+        "x1": 1774,
+        "y0": 80,
+        "y1": 794,
+        "nx": 3,
+        "ny": 3,
+        "keep": [
+          [
+            1,
+            -1,
+            403
+          ]
         ],
-        "y": [
-          291,
-          582
-        ]
+        "note": "SW cut parallel to the '240' diagonal wall, 80 cm off it (x - y >= 290 + 80*sqrt2)"
       }
-    },
-    "perimeter": true
+    }
   },
   "partitions": {
     "_doc": "Rotating partitions on the inner/outer divider (Eily): 1 m wide, pivot on the centre axis, full height minus 3 cm top and bottom. Count 5 (as in the model) evenly along the divider - confirm.",

@@ -33,6 +33,18 @@ function clipLine(p, d, poly) {
   return out;
 }
 
+// Sutherland-Hodgman: keep the part of polygon P with a*x + b*y >= c
+function clipHalf(P, a, b, c) {
+  const out = [];
+  const f = (p) => a * p[0] + b * p[1] - c;
+  for (let i = 0; i < P.length; i++) {
+    const p = P[i], q = P[(i + 1) % P.length], fp = f(p), fq = f(q);
+    if (fp >= 0) out.push(p);
+    if ((fp >= 0) !== (fq >= 0)) { const t = fp / (fp - fq); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+  }
+  return out;
+}
+
 export function zoneOf(room, x, y) {
   for (const z of room.data.zones ?? []) if (pointInPoly(x, y, z.polygon)) return z.id;
   return (room.data.zones?.[1]?.id) ?? 'outer';
@@ -56,18 +68,26 @@ export class Grid {
     this.build();
   }
 
-  // ceiling grid segments (plan cm) for every zone: interior lines + optional perimeter of the zone polygon
+  // ceiling grid of one zone: polygon (rectangle cut by half-planes) + its x and y grid lines (plan cm)
+  zoneGrid(id) {
+    const g = this.cfg.zones?.[id];
+    if (!g || g.x0 === undefined) return null;
+    let poly = [[g.x0, g.y0], [g.x1, g.y0], [g.x1, g.y1], [g.x0, g.y1]];
+    for (const [A, B, C] of g.keep ?? []) poly = clipHalf(poly, A, B, C);
+    const xs = Array.from({ length: g.nx + 1 }, (_, i) => g.x0 + ((g.x1 - g.x0) * i) / g.nx);
+    const ys = Array.from({ length: g.ny + 1 }, (_, i) => g.y0 + ((g.y1 - g.y0) * i) / g.ny);
+    return { poly, xs, ys };
+  }
+
   ceilingSegments() {
     const segs = [];
     for (const z of this.room.data.zones ?? []) {
-      const g = this.cfg.zones?.[z.id];
-      if (!g) continue;
-      for (const x of g.x ?? []) segs.push(...clipLine([x, -1e4], [0, 1], z.polygon).map((s) => ({ s, zone: z.id, axis: 'x' })));
-      for (const y of g.y ?? []) segs.push(...clipLine([-1e4, y], [1, 0], z.polygon).map((s) => ({ s, zone: z.id, axis: 'y' })));
-      if (this.cfg.perimeter) {
-        const P = z.polygon;
-        for (let i = 0; i < P.length; i++) segs.push({ s: [P[i], P[(i + 1) % P.length]], zone: z.id, axis: 'perim' });
-      }
+      const G = this.zoneGrid(z.id);
+      if (!G) continue;
+      for (const x of G.xs.slice(1, -1)) segs.push(...clipLine([x, -1e4], [0, 1], G.poly).map((s) => ({ s, zone: z.id })));
+      for (const y of G.ys.slice(1, -1)) segs.push(...clipLine([-1e4, y], [1, 0], G.poly).map((s) => ({ s, zone: z.id })));
+      const P = G.poly;
+      for (let i = 0; i < P.length; i++) segs.push({ s: [P[i], P[(i + 1) % P.length]], zone: z.id });
     }
     return segs;
   }
@@ -96,42 +116,39 @@ export class Grid {
   // line: {id, surf: wallId | 'FLOOR', a: [u, v], b: [u, v]}; wall: u = cm along the wall, v = cm above the floor;
   // floor: u, v = plan x, y (cm). Lines can run in any direction on their surface.
   defaultLines() {
+    // the wall grid continues the ceiling grid: every ceiling-grid line (edges included) is extended to the walls;
+    // where it meets a mountable wall it becomes a vertical line from the floor to the ceiling, and a short ceiling
+    // line (white profile) joins the wall line to the ceiling grid (~80 cm)
     const room = this.room, H = room.wallHeight, out = [];
     let k = 1;
     const id = () => `L${String(k++).padStart(3, '0')}`;
     const walls = room.walls.filter((w) => w.kind === 'target' || w.kind === 'optional');
-    const cell = 290;
-    for (const w of walls) {
-      const sg = w.segs[0];
-      // 1) vertical lines where a ceiling-grid line meets this wall (the grid continues down the wall)
-      const ss = [];
-      for (const z of room.data.zones ?? []) {
-        const g = this.cfg.zones?.[z.id];
-        if (!g) continue;
-        const lines = [...(g.x ?? []).map((x) => ({ p: [x, 0], d: [0, 1] })), ...(g.y ?? []).map((y) => ({ p: [0, y], d: [1, 0] }))];
-        for (const L of lines) for (const g2 of w.segs) {
+    for (const z of room.data.zones ?? []) {
+      const G = this.zoneGrid(z.id);
+      if (!G) continue;
+      const nudge = (v, i, arr) => (i === 0 ? v + 0.05 : i === arr.length - 1 ? v - 0.05 : v); // edge lines: clip just inside
+      const lines = [...G.xs.map((x, i, A) => ({ p: [nudge(x, i, A), 0], d: [0, 1] })), ...G.ys.map((y, i, A) => ({ p: [0, nudge(y, i, A)], d: [1, 0] }))];
+      for (const L of lines) {
+        const inside = clipLine([L.p[0] - L.d[0] * 1e4, L.p[1] - L.d[1] * 1e4], L.d, G.poly)[0];
+        if (!inside) continue;
+        for (const w of walls) for (const g2 of w.segs) {
           const ex = g2.b[0] - g2.a[0], ey = g2.b[1] - g2.a[1];
           const den = L.d[0] * ey - L.d[1] * ex;
           if (Math.abs(den) < 1e-9) continue;
           const u = ((g2.a[0] - L.p[0]) * L.d[1] - (g2.a[1] - L.p[1]) * L.d[0]) / den;
-          if (u <= 0.02 || u >= 0.98) continue;
+          if (u <= 0.01 || u >= 0.99) continue;
           const px = g2.a[0] + ex * u, py = g2.a[1] + ey * u;
           if (!pointInPoly(px + g2.n[0] * 5, py + g2.n[1] * 5, z.polygon)) continue;
-          ss.push(Math.round(g2.s0 + u * g2.len));
+          // the wall must be reached from the grid without leaving the zone: nearest grid end -> wall point
+          const near = [inside[0], inside[1]].sort((A, B) => Math.hypot(A[0] - px, A[1] - py) - Math.hypot(B[0] - px, B[1] - py))[0];
+          const mid = [(near[0] + px) / 2, (near[1] + py) / 2];
+          if (!pointInPoly(mid[0], mid[1], z.polygon)) continue;
+          const sv = Math.round(g2.s0 + u * g2.len);
+          if (out.some((l) => l.surf === w.id && Math.abs(l.a[0] - sv) < 2)) continue;
+          out.push({ id: id(), surf: w.id, a: [sv, 0], b: [sv, H] });
+          out.push({ id: id(), surf: 'CEIL', a: [Math.round(px + g2.n[0] * 1), Math.round(py + g2.n[1] * 1)], b: [Math.round(near[0]), Math.round(near[1])] });
         }
       }
-      // 2) fill so no gap on the wall is wider than one grid cell (walls the ceiling lines don't reach get lines too)
-      const pts = [0, ...ss.sort((a, b) => a - b), Math.round(w.length)];
-      const all = [];
-      for (let i = 0; i + 1 < pts.length; i++) {
-        const a = pts[i], b = pts[i + 1], n = Math.ceil((b - a) / cell);
-        for (let j = 1; j < n; j++) all.push(Math.round(a + ((b - a) * j) / n));
-        if (i + 1 < pts.length - 1) all.push(b);
-      }
-      for (const sv of [...new Set(all)]) out.push({ id: id(), surf: w.id, a: [sv, 0], b: [sv, H] });
-      // 3) one horizontal line under the ceiling (the grid's edge frame comes down to the wall)
-      const hh = H - (this.pcfg.topRunBelowCeilingCm ?? 50);
-      out.push({ id: id(), surf: w.id, a: [0, hh], b: [Math.round(w.length), hh] });
     }
     return out;
   }
@@ -150,18 +167,20 @@ export class Grid {
   toWorld(surf, uv, out = new THREE.Vector3()) {
     const sz = this.pcfg.sizeCm ?? 1.7;
     if (surf === 'FLOOR') return out.set(uv[0] * CM, (sz / 2) * CM, uv[1] * CM);
+    if (surf === 'CEIL') return out.set(uv[0] * CM, (this.room.wallHeight - sz / 2) * CM, uv[1] * CM);
     const w = this.room.wall(surf);
     const p = this.room.pointAt(w, uv[0]);
     return out.set((p.x + p.n[0] * (sz / 2 + 0.05)) * CM, uv[1] * CM, (p.y + p.n[1] * (sz / 2 + 0.05)) * CM);
   }
   // world point -> surface coordinates
   toSurf(surf, v) {
-    if (surf === 'FLOOR') return [v.x / CM, v.z / CM];
+    if (surf === 'FLOOR' || surf === 'CEIL') return [v.x / CM, v.z / CM];
     const w = this.room.wall(surf);
     return [this.room.projectOnWall(w, v.x / CM, v.z / CM).s, v.y / CM];
   }
   surfNormal(surf) {
     if (surf === 'FLOOR') return new THREE.Vector3(0, 1, 0);
+    if (surf === 'CEIL') return new THREE.Vector3(0, -1, 0);
     const n = this.room.wall(surf).segs[0].n;
     return new THREE.Vector3(n[0], 0, n[1]);
   }
@@ -169,7 +188,7 @@ export class Grid {
   clampLine(l) {
     const w = this.room.wall(l.surf);
     if (!w) return;
-    if (l.surf === 'FLOOR') return;
+    if (l.surf === 'FLOOR' || l.surf === 'CEIL') return;
     const H = this.room.wallHeight;
     for (const p of [l.a, l.b]) { p[0] = Math.max(0, Math.min(w.length, p[0])); p[1] = Math.max(0, Math.min(H, p[1])); }
   }
@@ -196,7 +215,7 @@ export class Grid {
     this.lineMeshes = [];
     for (const l of this.lines) {
       this.clampLine(l);
-      if (!this.room.wall(l.surf)) continue;
+      if (l.surf !== 'CEIL' && !this.room.wall(l.surf)) continue;
       const m = this.lineMesh(l, this.selected === l.id ? this.profSelMat : this.profMat);
       if (!m) continue;
       this.prof.add(m);

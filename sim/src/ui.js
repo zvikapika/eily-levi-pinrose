@@ -71,24 +71,27 @@ export function buildUI(app) {
       h('label', { class: 'row chk' }, ceil, ' Ceiling (auto in walk mode)'),
       h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => (app.cutaway = e.target.checked) }), ' Cutaway: see through walls facing away (overview)'),
       h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => app.setUnitDots(e.target.checked) }), ' Locator dots behind units (overview)'),
-      h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => app.setLabels(e.target.checked) }), ' Wall labels in plan view'),
+      h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => app.setLabels(e.target.checked) }), ' Wall names (overview + plan) — click a name to see that wall from the front'),
     );
     panel.append(s.el);
   }
 
   // ---------------------------------------------------------------- inner space quick controls
   {
-    const s = section('Inner space — LEDs & darkness');
+    const s = section('Inner space — LEDs & light');
     const L = units.led;
     const ledOn = h('input', { type: 'checkbox', checked: L.on, onchange: (e) => { units.setLed({ on: e.target.checked }); app.autosave(); } });
-    const dark = h('input', { type: 'checkbox', checked: !!lighting.dark, onchange: (e) => { lighting.setDark(e.target.checked); app.autosave(); } });
+    const dim = numRow('Inner light', { min: 0, max: 1.5, step: 0.01, value: lighting.zones.inner.dim, onChange: (v) => { lighting.setZone('inner', { dim: v }); ui.zoneDims?.inner?.set(v); app.autosave(); } });
     s.body.append(
       h('label', { class: 'row chk big' }, ledOn, ' 💡 LED inside the units (inner room only)'),
-      h('label', { class: 'row chk big' }, dark, ' 🌑 Darken the inner room'),
+      dim.row,
+      h('div', { class: 'btns' },
+        h('button', { onclick: () => { lighting.setZone('inner', { dim: 0.05 }); dim.set(0.05); ui.zoneDims?.inner?.set(0.05); app.autosave(); } }, '🌑 Inner almost dark'),
+        h('button', { onclick: () => { lighting.setZone('inner', { dim: 1 }); dim.set(1); ui.zoneDims?.inner?.set(1); app.autosave(); } }, '☀ Inner normal')),
       h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'LED colour'), h('input', { type: 'color', value: L.colour, oninput: (e) => units.setLed({ colour: e.target.value }) })),
       numRow('LED level', { min: 0, max: 2, step: 0.01, value: L.intensity, onChange: (v) => units.setLed({ intensity: v }) }).row,
-      h('div', { class: 'help' }, 'More control (each space\'s dimmer, colour temperature, track lights) is in Lighting below.'));
-    ui.innerQuick = { ledOn, dark };
+      h('div', { class: 'help' }, 'Only the inner room changes; the outer room keeps its light. More (each space\'s colour temperature, track lights) is in Lighting below.'));
+    ui.innerQuick = { ledOn, dim };
     panel.append(s.el);
   }
 
@@ -244,7 +247,7 @@ export function buildUI(app) {
     const drawBtn = h('button', { class: 'hi', onclick: () => app.setDraw(!app.draw.on) }, '✎ Draw lines (L)');
     ui.setDrawState = (on) => { drawBtn.textContent = on ? '■ Stop drawing (Esc)' : '✎ Draw lines (L)'; drawBtn.classList.toggle('on', on); };
     const sel = h('div', { class: 'props' });
-    const surfName = (id) => (id === 'FLOOR' ? 'Floor' : id);
+    const surfName = (id) => (id === 'FLOOR' ? 'Floor' : id === 'CEIL' ? 'Ceiling' : id);
     const refresh = () => {
       const byS = {};
       for (const l of grid.lines) byS[surfName(l.surf)] = (byS[surfName(l.surf)] ?? 0) + grid.lengthCm(l);
@@ -253,11 +256,11 @@ export function buildUI(app) {
       sel.innerHTML = '';
       const l = grid.lines.find((x) => x.id === grid.selected);
       if (!l) { sel.append(h('div', { class: 'help' }, 'Click a line (drawing off) to select it · Delete key removes it')); return; }
-      const isF = l.surf === 'FLOOR';
+      const isF = l.surf === 'FLOOR' || l.surf === 'CEIL';
       const upd = () => { grid.buildLines(); app.editProfiles(); };
       const f = (label, arr, k) => numRow(label, { min: isF ? -100 : 0, max: isF ? 2300 : Math.round(room.wall(l.surf)?.length ?? 2000), value: Math.round(arr[k]), unit: 'cm', onChange: (v) => { arr[k] = v; upd(); } }).row;
       sel.append(
-        h('div', { class: 'sub' }, `Line ${l.id} · ${isF ? 'floor' : `wall ${l.surf}`} · ${grid.lengthCm(l).toFixed(0)} cm`),
+        h('div', { class: 'sub' }, `Line ${l.id} · ${isF ? surfName(l.surf).toLowerCase() : `wall ${l.surf}`} · ${grid.lengthCm(l).toFixed(0)} cm`),
         f(isF ? 'Start x' : 'Start along', l.a, 0), f(isF ? 'Start y' : 'Start height', l.a, 1),
         f(isF ? 'End x' : 'End along', l.b, 0), f(isF ? 'End y' : 'End height', l.b, 1),
         h('div', { class: 'btns' }, h('button', { onclick: () => app.deleteSelectedLine() }, 'Delete line')));
@@ -270,7 +273,7 @@ export function buildUI(app) {
     s.body.append(info,
       h('div', { class: 'btns' }, drawBtn,
         h('button', { onclick: () => { if (!confirm('Remove all grid lines?')) return; grid.setLines([]); app.editProfiles(); } }, 'Clear all'),
-        h('button', { onclick: () => { grid.setLines(grid.defaultLines()); app.editProfiles(); }, title: 'A grid on every wall with units: the ceiling-grid lines continue down the walls (gaps filled to one cell) + one run under the ceiling' }, 'Default wall grid'),
+        h('button', { onclick: () => { grid.setLines(grid.defaultLines()); app.editProfiles(); }, title: 'The wall grid that continues the ceiling grid: each ceiling-grid line becomes a vertical line where it meets a wall, joined to the ceiling grid by a short ceiling line' }, 'Wall grid from ceiling grid'),
       ),
       h('div', { class: 'help' }, 'Drawing: click on a wall or the floor to start, click again to end the line — it continues from there, so you can draw a path. Click the same point twice or press Esc to stop. Shift = straight (horizontal / vertical). Ends snap to unit tips and to other line ends.'),
       h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Snap step'), step, h('span', { class: 'unit' }, 'cm')),
@@ -322,7 +325,8 @@ export function buildUI(app) {
   // ---------------------------------------------------------------- lighting
   {
     const s = section('Lighting', false);
-    const amb = numRow('Ambient', { min: 0, max: 2, step: 0.01, value: lighting.ambient.intensity, onChange: (v) => lighting.setAmbient(v) });
+    const fill = numRow('Room fill', { min: 0, max: 3, step: 0.01, value: lighting.fillLevel, onChange: (v) => { lighting.setFill(v); app.autosave(); } });
+    const amb = numRow('Global fill', { min: 0, max: 2, step: 0.01, value: lighting.ambient.intensity, onChange: (v) => lighting.setAmbient(v) });
     const exp = numRow('Exposure', { min: 0.2, max: 2.5, step: 0.01, value: lighting.exposure, onChange: (v) => lighting.setExposure(v) });
     const sh = h('input', { type: 'checkbox', checked: lighting.shadows, onchange: (e) => lighting.setShadows(e.target.checked) });
     const wc = h('input', { type: 'color', value: '#' + room.wallMat.color.getHexString(), oninput: (e) => { room.wallMat.color.set(e.target.value); room.excludedMat.color.set(e.target.value).multiplyScalar(0.94); } });
@@ -357,7 +361,7 @@ export function buildUI(app) {
       const k = numRow('Colour temp', { min: 0, max: 6500, step: 50, value: z.kelvin, unit: 'K', onChange: (v) => { lighting.setZone(id, { kelvin: v }); app.autosave(); } });
       return h('div', { class: 'spot' },
         h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: z.on, onchange: (e) => { lighting.setZone(id, { on: e.target.checked }); app.autosave(); } }), h('b', {}, ` ${label}`)),
-        numRow('Dimmer', { min: 0, max: 2, step: 0.01, value: z.dim, onChange: (v) => { lighting.setZone(id, { dim: v }); app.autosave(); } }).row,
+        (() => { const r = numRow('Dimmer', { min: 0, max: 2, step: 0.01, value: z.dim, onChange: (v) => { lighting.setZone(id, { dim: v }); if (id === 'inner') ui.innerQuick?.dim.set(v); app.autosave(); } }); (ui.zoneDims ??= {})[id] = r; return r.row; })(),
         k.row,
         h('div', { class: 'help' }, 'Colour temp 0 = each light keeps its own.'),
         h('div', { class: 'btns' }, h('button', { onclick: () => { lighting.addSpot(id); renderSpots(); app.autosave(); } }, `+ Light in ${id} space`)));
@@ -374,6 +378,8 @@ export function buildUI(app) {
       zoneBox('outer', 'Outer space (85 m², east)'),
       led,
       h('div', { class: 'sub' }, 'General'),
+      fill.row,
+      h('div', { class: 'help' }, 'Room fill = the soft general light of each space (follows each space\'s switch and dimmer). Global fill lights both spaces - keep it low so a dimmed space gets really dark.'),
       amb.row, exp.row,
       h('label', { class: 'row chk' }, sh, ' Shadows'),
       h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Wall colour'), wc, h('span', { class: 'lbl' }, ' Floor'), fc),

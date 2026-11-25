@@ -8,11 +8,13 @@ Use (one jig per wall shape):
   - notch_jig_round.stl    : the round end (inner radius ~41.5 mm)
   1. Slide the jig over the wall from the rim (wall in the slot, the top plate resting on the rim), centre mark on your
      pencil mark.
-  2. Drill the 2 corner holes through the jig guides (Ø2.5 drill): the round corners stop the PLA from cracking.
-  3. Saw down both saw slots (fine saw, blade <= 0.9 mm) until the blade stops on the slot bottom (17.5 mm).
-  4. Score the bottom line with a knife along the top edge of the knife slit (outside face), bend the tab out, file clean.
+  2. Drill the 2 corner holes through the guides at the bottom corners of the opening (Ø2.5 drill): the round
+     corners stop the PLA from cracking.
+  3. Saw down along both side faces of the opening (fine saw, blade against the face, on the opening side) until the
+     blade stops on the band (17.5 mm).
+  4. Score the bottom line with a knife along the band's top edge, bend the tab out, file clean.
 
-Print: top plate on the bed (file orientation), no supports, 100 % infill or 6 walls.
+Print: as in the file - the band (bottom of the U) on the bed, the opening up. No supports, 100 % infill.
 Run: cad/.venv/bin/python cad/jig/notch_jig.py  -> cad/out_jig/
 """
 from pathlib import Path
@@ -29,13 +31,12 @@ from pinrose_v2 import U, D, prism, save  # noqa: E402
 WALL_T = 1.6
 NOTCH_W = 18.0          # notch width (17 mm profile + 1 mm play)
 NOTCH_D = 17.5          # notch depth from the rim
-KERF = 1.0              # saw slot width (fine saw / razor saw)
+GUIDE_OFFSET = 0.5      # end-block face sits this far outside the notch edge (a 0.5 mm blade then cuts on the line)
 CORNER_D = 2.5          # corner relief holes (drill)
 TOP_T = 3.0             # top plate resting on the rim
 CHEEK_OUT = 4.0         # outer cheek thickness
-CHEEK_IN = 3.0          # inner cheek thickness (inside the cover)
+CHEEK_IN = 3.5          # inner cheek thickness (inside the cover)
 DEPTH = 30.0            # cheeks reach this far below the rim (a solid band below the knife slit holds the jig together)
-KNIFE_SLIT = 3.0        # height of the knife window under the notch line (its top edge = the knife guide)
 JIG_L = 40.0            # length along the wall (straight)
 GAP_STRAIGHT = 0.3      # play on the wall thickness
 GAP_ROUND = 0.8         # more play on the round end (its arc is not a perfect circle, +-0.6 mm)
@@ -63,22 +64,19 @@ def hole_along_v(u, z, d, length=40.0, angle=0.0, centre=(0.0, 0.0)):
 
 
 def build(round_end=False):
-    # local plan frame: x = along the wall, y = across (y = 0 inner wall face, y = WALL_T outer face)
-    # print frame z: top plate z 0..TOP_T (bed), cheeks up to TOP_T + DEPTH; depth below the rim = z - TOP_T
+    """rev 3 (Eily: the middle part hung on a sliver above the drill hole): no middle part at all.
+    Two end blocks (top plate + both cheeks) joined only by a full-width band BELOW the notch line. The opening between
+    the blocks IS the notch: its side faces guide the saw, the band's top edge is the saw stop and the knife line,
+    and a drill guide sits in each bottom corner (dog-bone relief, 3/4 of its circle in solid material)."""
     gap = GAP_ROUND if round_end else GAP_STRAIGHT
     zt, zb = TOP_T, TOP_T + DEPTH
-    z_slot = TOP_T + NOTCH_D                         # slot bottom = saw stop
-    z_hole = z_slot - CORNER_D / 2                   # hole bottom tangent to the notch bottom line
-    u_hole = NOTCH_W / 2 - CORNER_D / 2              # hole side tangent to the saw line
+    z_line = TOP_T + NOTCH_D                         # notch bottom: band top = saw stop = knife line
+    u_face = NOTCH_W / 2 + GUIDE_OFFSET              # end-block faces: the blade runs on their inner side
     if not round_end:
         foot = box(-JIG_L / 2, -gap / 2 - CHEEK_IN, JIG_L / 2, WALL_T + gap / 2 + CHEEK_OUT)
         wall = box(-JIG_L, -gap / 2, JIG_L, WALL_T + gap / 2)
-        slots = [box(s * NOTCH_W / 2, -20, s * (NOTCH_W / 2 + KERF), 20) for s in (1, -1)]
-        window = box(-u_hole, -20, u_hole, 20)
-        holes = [hole_along_v(s * u_hole, z_hole, CORNER_D) for s in (1, -1)]
-        mark = Polygon([(-0.8, WALL_T + gap / 2 + CHEEK_OUT + 0.01), (0.8, WALL_T + gap / 2 + CHEEK_OUT + 0.01), (0, WALL_T + gap / 2 + CHEEK_OUT - 1.2)])
+        hl = 40
     else:
-        # wall = annulus around (0, R): inner face radius R_INNER, the jig centred at angle -90 deg (point (0, 0))
         C = (0.0, R_INNER)
         from shapely.geometry import Point
         half = JIG_L_ROUND / 2 / R_INNER
@@ -86,36 +84,22 @@ def build(round_end=False):
         ring = lambda r0, r1: Point(C).buffer(r1, 256).difference(Point(C).buffer(r0, 256))
         foot = ring(R_INNER - gap / 2 - CHEEK_IN, R_INNER + WALL_T + gap / 2 + CHEEK_OUT).intersection(sector)
         wall = ring(R_INNER - gap / 2, R_INNER + WALL_T + gap / 2)
-        # saw slots are straight (a saw cuts a plane): radial strips through the wall at +-NOTCH_W/2 (chord at the wall)
-        a_cut = np.arcsin(NOTCH_W / 2 / R_INNER)
-        slots = []
-        for s in (1, -1):
-            st = box(0, -30, KERF, 30)
-            st = affinity.translate(st, NOTCH_W / 2 if s > 0 else -NOTCH_W / 2 - KERF, 0)
-            slots.append(affinity.rotate(st, 0, origin=(0, 0)))
-        window = box(-u_hole, -30, u_hole, 30)
-        holes = [hole_along_v(s * u_hole, z_hole, CORNER_D, 60) for s in (1, -1)]
-        ro = R_INNER + WALL_T + gap / 2 + CHEEK_OUT
-        mark = Polygon([(-0.8, R_INNER - ro - 0.01), (0.8, R_INNER - ro - 0.01), (0, R_INNER - ro + 1.2)])
-        # flip so the outside of the cover is at +y like the straight jig: the ring is centred at (0, R): outer = -y side
-        _ = a_cut
+        hl = 60
     top = zprism(foot, 0, zt)
     cheeks = zprism(foot.difference(wall), zt - 0.01, zb)
     jig = U(top, cheeks)
-    cuts = [zprism(s.intersection(foot.buffer(1)), -1, z_slot) for s in slots]
-    # knife slit on the OUTER cheek only, not open to the bottom: the inner cheek stays whole, so the middle of the jig
-    # (top plate, drill guides, centre mark) hangs on the full inner cheek + the band under the slit, not on a sliver
-    outer = box(-100, WALL_T + gap / 2, 100, 100) if not round_end else box(-100, -100, 100, -(WALL_T + gap / 2) + 0.0)
-    cuts.append(zprism(window.intersection(foot.buffer(1)).intersection(outer), z_slot, z_slot + KNIFE_SLIT))
-    cuts += holes
-    cuts.append(zprism(mark, -1, 0.8))              # centre mark, printed into the top plate's outer edge
-    jig = D(jig, *cuts)
-    return jig
+    opening = box(-u_face, -100, u_face, 100)        # straight-sided, so both cuts are parallel planes
+    cuts = [zprism(opening.intersection(foot.buffer(1)), -1, z_line)]
+    cuts += [hole_along_v(sx * (NOTCH_W / 2 + GUIDE_OFFSET / 2), z_line, CORNER_D, hl) for sx in (1, -1)]
+    return D(jig, *cuts)
 
 
 if __name__ == "__main__":
     for name, rnd in (("notch_jig_straight", False), ("notch_jig_round", True)):
         m = build(rnd)
+        # print orientation: the band (bottom of the U) on the bed, opening up - no bridges, no supports
+        m.apply_transform(trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0]))
+        m.apply_translation([0, 0, -m.bounds[0][2]])
         r = save(m, OUT / f"{name}.stl")
         nb = len(r.split(only_watertight=False))
         # weakest link: smallest cross-section between the middle part and an end (planes across the jig at the slots)

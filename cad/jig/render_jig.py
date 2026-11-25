@@ -16,9 +16,9 @@ pl.set_background("white")
 for k, name in enumerate(["notch_jig_straight", "notch_jig_round"]):
     pl.subplot(0, k)
     m = trimesh.load(O / f"{name}.stl")
-    m.apply_transform(trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0]))  # as used: top plate up
+    # the file is already as used / as printed: band at the bottom, opening up
     pl.add_mesh(pvm(m), color="#ffb36b", smooth_shading=False, specular=0.3)
-    pl.camera_position = [(60, -90, 60), (0, 0, -14), (0, 0, 1)]
+    pl.camera_position = [(60, -90, 70), (0, 0, 14), (0, 0, 1)]
     pl.reset_camera(); pl.camera.zoom(1.15)
     pl.add_text({"notch_jig_straight": "Straight sides", "notch_jig_round": "Round end"}[name], font_size=13, color="black")
 pl.subplot(0, 2)

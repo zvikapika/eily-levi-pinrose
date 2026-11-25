@@ -9,5 +9,5 @@ def hits(m, o, d):
     return sorted(np.round(np.asarray(loc).reshape(-1, 3) @ np.array(d), 2).tolist())
 
 
-print('straight cover', hits(cov, [-100, 86, 40], [1, 0, 0])[:2], 'jig', hits(js, [-100, 86, 40], [1, 0, 0]))
-print('round cover', hits(cov, [-50, -40, 40], [0, 1, 0])[:2], 'jig', hits(jr, [-50, -40, 40], [0, 1, 0]))
+print('straight cover', hits(cov, [-100, 76, 40], [1, 0, 0])[:2], 'jig', hits(js, [-100, 76, 40], [1, 0, 0]))
+print('round cover', hits(cov, [-56, -40, 40], [0, 1, 0])[:2], 'jig', hits(jr, [-56, -40, 40], [0, 1, 0]))

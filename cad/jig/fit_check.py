@@ -9,7 +9,13 @@ OUT = Path(__file__).resolve().parent.parent / "out_jig"
 cov = trimesh.load(Path(__file__).resolve().parent.parent / "out_v6" / "pinrus_v6.stl")
 c, b, r = V.load_refs(); o0, i0 = P3.shell_outlines(c); _, in1 = P3.grow(o0, i0)
 res = {}
+def unflip(m):
+    # the STL is saved band-down (print orientation); back to the build frame (top plate at z' 0..3)
+    m = m.copy(); m.apply_transform(trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0])); m.apply_translation([0, 0, -m.bounds[0][2]]); return m
+
+
 def place(m, O, t, n_out, flip_y=False):
+    m = unflip(m)
     # jig local: x along the wall, y across (outer = +y straight / -y round), z' (rim at z' = 3, depth = z' - 3)
     t = np.r_[t, 0]; n = np.r_[n_out, 0]; e = np.array([0, 0, 1.0])
     Y = -n if flip_y else n

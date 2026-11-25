@@ -14,7 +14,7 @@ Use (one jig per wall shape):
      blade stops on the band (17.5 mm).
   4. Score the bottom line with a knife along the band's top edge, bend the tab out, file clean.
 
-Print: as in the file - the band (bottom of the U) on the bed, the opening up. No supports, 100 % infill.
+Print: as in the file - top plate on the bed (the U upside down), no supports, brim, 100 % infill.
 Run: cad/.venv/bin/python cad/jig/notch_jig.py  -> cad/out_jig/
 """
 from pathlib import Path
@@ -79,10 +79,10 @@ def build(round_end=False):
     else:
         C = (0.0, R_INNER)
         from shapely.geometry import Point
-        half = JIG_L_ROUND / 2 / R_INNER
-        sector = Polygon([C] + [(C[0] + 200 * np.sin(a), C[1] - 200 * np.cos(a)) for a in np.linspace(-half, half, 40)])
         ring = lambda r0, r1: Point(C).buffer(r1, 256).difference(Point(C).buffer(r0, 256))
-        foot = ring(R_INNER - gap / 2 - CHEEK_IN, R_INNER + WALL_T + gap / 2 + CHEEK_OUT).intersection(sector)
+        # flat outer back (a chord, not an arc): the jig prints lying on it - thicker outer cheek at the ends
+        y_flat = C[1] - (R_INNER + WALL_T + gap / 2 + CHEEK_OUT)
+        foot = box(-JIG_L_ROUND / 2, y_flat, JIG_L_ROUND / 2, C[1]).difference(Point(C).buffer(R_INNER - gap / 2 - CHEEK_IN, 256))
         wall = ring(R_INNER - gap / 2, R_INNER + WALL_T + gap / 2)
         hl = 60
     top = zprism(foot, 0, zt)
@@ -94,12 +94,19 @@ def build(round_end=False):
     return D(jig, *cuts)
 
 
+def to_print(m, round_end):
+    """print orientation: TOP PLATE ON THE BED (= the build frame). Rev 3 was saved band-down and stood on its two thin
+    cheek strips, which came loose on Eily's first layer. Top-plate-down, each end block starts on a solid rectangle
+    (the top plate spans the wall gap), and the only bridge is the band over the opening (19 mm, cheek strips 3.5-4 mm)."""
+    m = m.copy()
+    b = m.bounds
+    m.apply_translation([-(b[0][0] + b[1][0]) / 2, -(b[0][1] + b[1][1]) / 2, -b[0][2]])
+    return m
+
+
 if __name__ == "__main__":
     for name, rnd in (("notch_jig_straight", False), ("notch_jig_round", True)):
-        m = build(rnd)
-        # print orientation: the band (bottom of the U) on the bed, opening up - no bridges, no supports
-        m.apply_transform(trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0]))
-        m.apply_translation([0, 0, -m.bounds[0][2]])
+        m = to_print(build(rnd), rnd)
         r = save(m, OUT / f"{name}.stl")
         nb = len(r.split(only_watertight=False))
         # weakest link: smallest cross-section between the middle part and an end (planes across the jig at the slots)

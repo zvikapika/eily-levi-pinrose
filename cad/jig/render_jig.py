@@ -15,8 +15,8 @@ pl = pv.Plotter(off_screen=True, shape=(1, 3), window_size=(2100, 800), border=F
 pl.set_background("white")
 for k, name in enumerate(["notch_jig_straight", "notch_jig_round"]):
     pl.subplot(0, k)
-    m = trimesh.load(O / f"{name}.stl")
-    # the file is already as used / as printed: band at the bottom, opening up
+    import sys; sys.path.insert(0, str(Path(__file__).resolve().parent)); import notch_jig as NJ
+    m = NJ.build(name.endswith("round")); m.apply_transform(trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0])); m.apply_translation([0, 0, -m.bounds[0][2]])  # as used: opening up
     pl.add_mesh(pvm(m), color="#ffb36b", smooth_shading=False, specular=0.3)
     pl.camera_position = [(60, -90, 70), (0, 0, 14), (0, 0, 1)]
     pl.reset_camera(); pl.camera.zoom(1.15)

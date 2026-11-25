@@ -125,3 +125,10 @@ Eily wants to bring the 17×17 electric channel into a unit at any position or a
 - **Strength (rev 2, after Eily noticed the middle hung on a sliver by the drill holes):** the inner cheek stays whole and a solid band runs under the knife slit (cheeks 30 mm deep). The material holding the middle part below the notch line went from 17 mm² to 64 mm² (`jig/weakest_section.py`).
 - **Virtual fit on v6** (`jig/fit_check.py`, `jig/ray_check.py`): 0 overlap with the cover. Play per side: 0.15 mm on the straight jig, ~0.4 mm on the round jig. Picture: `out_jig/notch_jig_views.png`.
 - Print with the top plate on the bed, no supports, 100 % infill.
+
+## Trunking connectors (`connectors/connectors.py`, output `out_connectors/`)
+For the 17×17 snap-lid cable trunking that carries the power to the units. Following Eily's brief, the connectors go **over** the trunking ends, which hides imperfect cuts, and they are delicate: 1.2 mm walls, 12 mm sockets, 0.25 mm play. On a wall or floor each sleeve is a U with **no wall-facing side**: it sits flat on the surface and the cable passes inside. Free (3D) arms get closed sleeves. A convex hub closes odd-angle corners, and every root stays on the room side of its surface, so the hub never pokes into a wall.
+- **Starter set:** straight coupler, elbows (90 / 45 / 135), tee, cross, Y-120, end cap, and inside corners for wall↔floor, wall↔ceiling and wall↔wall.
+- **Exact connectors:** `connectors.py pinrose-junctions.json` (exported from the sim) makes one connector per junction.
+- **`check_connectors.py`:** pushes a 17×17 stub into every arm (0 overlap) and checks the cable path is open from every mouth to the centre. It also renders `connectors_starter_set.png`.
+- **To confirm:** the real trunking size (`PROFILE_W/H`), the lid side and the play. In-plane connectors print with their open back on the bed; 3D corners need supports or a different orientation.

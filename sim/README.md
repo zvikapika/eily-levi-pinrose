@@ -154,3 +154,12 @@ That leaves plenty of headroom for 60 fps.
 - **Wall grid from the ceiling grid:** every ceiling-grid line (edges included) is extended to the walls. Where it meets a mountable wall it becomes a vertical white line from floor to ceiling, joined to the ceiling grid by a short white ceiling line (surface `CEIL`). Rebuild it with "Wall grid from ceiling grid".
 - **Lighting per space:** the global ambient is now weak. Each space has its own soft fill (4 point lights under its ceiling, no shadows), and that fill follows the space's switch and dimmer. Dimming the inner space ("🌑 Inner almost dark" or the Inner light slider) leaves the outer space lit. The separate "darken" toggle is gone.
 - **Clickable wall names:** wall names show in the overview and plan; click one to open that wall's front view.
+
+## Round 5 (Eily)
+- **Track spots:** they light the space itself, aimed down at the floor, instead of making hot spots on the walls.
+- **Navigation (overview):** the wheel/pinch zooms toward the cursor. W A S D / arrows slide the view sideways or forward without turning it (shift = faster), and Q / E move it down / up. Right-drag or shift-drag also slides. Double-click a wall or the floor to glide that point to the centre.
+- **3D lines:** end a line on a different surface and it becomes a straight 3D line through the space (`surf: 'AIR'`, endpoints [x, y, height] cm). Its endpoints can be edited numerically.
+- **Curves (`C`):** click the points, Enter/Esc to finish. A curve is drawn as the square profile swept along a centripetal Catmull-Rom curve. Select it to export a printable hollow channel (STL, mm, Z up, wall thickness settable). The panel warns when it doesn't fit the Ultimaker 2+ bed.
+- **Junctions → connectors:** "⬇ Junctions for connectors" writes `pinrose-junctions.json`. It lists every point where 2+ line ends meet (within 1.5 cm), with each arm's direction and the surface behind it. `cad/connectors/connectors.py <file>` turns it into one exact printable connector per junction.
+- **S-west in the inner space:** zones are now tested 10 cm into the room, so wall faces on a zone border land in the right space and their units get the inner LEDs.
+- **From the site photos:** cork partitions with aluminium edge profiles, 4 cm thick; dark skirting (10 cm high, estimated) on the solid walls; "Wall features" (Room panel) to mark sockets, the inner-space window and other things on the walls.

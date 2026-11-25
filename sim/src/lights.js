@@ -15,14 +15,15 @@ export function kelvinToColor(k) {
 }
 
 // default track spots (plan cm; aim point on the floor/wall, cm)
-const S = { aimH: 170, intensity: 35, kelvin: 3500, angle: 60, penumbra: 0.7 };
+// Eily: no spot light on the walls - the track spots light the space itself (aimed down at the floor)
+const S = { aimH: 0, intensity: 30, kelvin: 3500, angle: 70, penumbra: 0.8 };
 export const DEFAULT_SPOTS = [
-  { on: true, x: 430, y: 430, aimX: 60, aimY: 330, ...S },
-  { on: true, x: 560, y: 320, aimX: 560, aimY: 0, ...S },
-  { on: true, x: 1300, y: 330, aimX: 1300, aimY: 0, ...S },
-  { on: true, x: 1550, y: 430, aimX: 1854, aimY: 420, ...S },
-  { on: true, x: 1550, y: 680, aimX: 1620, aimY: 930, ...S, aimH: 150, intensity: 25 },
-  { on: true, x: 330, y: 560, aimX: 330, aimY: 860, ...S, aimH: 150, intensity: 25 },
+  { on: true, x: 290, y: 330, aimX: 330, aimY: 380, ...S },
+  { on: true, x: 570, y: 330, aimX: 540, aimY: 380, ...S },
+  { on: true, x: 430, y: 620, aimX: 430, aimY: 600, ...S },
+  { on: true, x: 1200, y: 300, aimX: 1200, aimY: 360, ...S },
+  { on: true, x: 1500, y: 300, aimX: 1500, aimY: 360, ...S },
+  { on: true, x: 1450, y: 640, aimX: 1420, aimY: 660, ...S },
 ];
 
 export class Lighting {

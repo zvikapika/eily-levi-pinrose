@@ -446,7 +446,7 @@
     }
   },
   "partitions": {
-    "_doc": "Rotating partitions on the inner/outer divider (Eily): 1 m wide, pivot on the centre axis, full height minus 3 cm top and bottom. Count 5 (as in the model) evenly along the divider - confirm.",
+    "_doc": "Rotating partitions on the inner/outer divider (Eily): 1 m wide, pivot on the centre axis, full height minus 3 cm top and bottom. Count 5 (as in the model) evenly along the divider - confirm. Cork panels with aluminium edge profiles, ~4 cm thick (Eily's photos).",
     "line": [
       [
         860,
@@ -459,7 +459,7 @@
     ],
     "count": 5,
     "widthCm": 100,
-    "thicknessCm": 2,
+    "thicknessCm": 4,
     "gapTopCm": 3,
     "gapBottomCm": 3,
     "mechanism": {
@@ -474,5 +474,15 @@
     "_doc": "White 17x17 mm square profile (electric channel) on the walls; default = continuation of the ceiling-grid lines down each wall + one horizontal run under the ceiling.",
     "sizeCm": 1.7,
     "topRunBelowCeilingCm": 50
+  },
+  "skirting": {
+    "_doc": "Dark skirting along the walls (photos), height estimated - confirm.",
+    "heightCm": 10,
+    "depthCm": 1.2,
+    "colour": "#3b3b3b"
+  },
+  "wallFeatures": {
+    "_doc": "Sockets, the window in the inner space etc. Positions are placeholders until Eily gives them; editable in the sim (Room > Wall features).",
+    "items": []
   }
 }

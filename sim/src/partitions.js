@@ -19,7 +19,8 @@ export class Partitions {
     this.cfg = d;
     this.group = new THREE.Group();
     this.group.name = 'partitions';
-    this.panelMat = new THREE.MeshStandardMaterial({ color: 0xd9c4a0, roughness: 0.75 });
+    this.panelMat = new THREE.MeshStandardMaterial({ color: 0xa8784c, roughness: 0.95 }); // cork (Eily's photos)
+    this.aluMat = new THREE.MeshStandardMaterial({ color: 0xc9ccd0, roughness: 0.35, metalness: 0.8 });
     this.metalMat = new THREE.MeshStandardMaterial({ color: 0x55595f, roughness: 0.4, metalness: 0.8 });
     this.motorMat = new THREE.MeshStandardMaterial({ color: 0x202226, roughness: 0.5, metalness: 0.4 });
     this.state = { count: d?.count ?? 5, widthCm: d?.widthCm ?? 100, mechanism: true, running: true,
@@ -82,6 +83,14 @@ export class Partitions {
       shaft.position.y = (H / 2) * CM;
       const lever = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.008, s.leverCm * CM), this.metalMat);
       lever.position.set(0, (H - 1.5) * CM, 0);
+      // aluminium edge profiles on both vertical edges (as in the photos)
+      const th = (cfg.thicknessCm ?? 4) * CM;
+      for (const sx of [-1, 1]) {
+        const e = new THREE.Mesh(new THREE.BoxGeometry(0.02, ph * CM, th + 0.004), this.aluMat);
+        e.position.set(sx * (s.widthCm * CM / 2 - 0.01), panel.position.y, 0);
+        e.castShadow = true;
+        g.add(e);
+      }
       g.add(panel, shaft);
       this.group.add(g);
       return { g, panel, lever };

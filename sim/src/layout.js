@@ -63,6 +63,7 @@ export function layoutToJSON(state) {
       lines: state.grid?.toJSON(),
       partitions: state.partitions?.toJSON(),
       led: state.units.led,
+      wallFeatures: state.room.features,
     },
     null,
     2

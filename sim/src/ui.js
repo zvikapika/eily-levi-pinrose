@@ -59,7 +59,7 @@ export function buildUI(app) {
     ui.setMode = (m) => {
       for (const [k, b] of Object.entries(btns)) b.classList.toggle('on', k === m);
       help.innerHTML = {
-        overview: 'Drag: orbit · right-drag: pan · wheel: zoom · click a unit: select (shift/ctrl: add) · drag a unit: slide it along the walls',
+        overview: 'Drag: turn around · wheel / pinch: zoom toward the cursor · W A S D / arrows: slide (shift = faster), Q / E: down / up · right-drag or shift-drag: slide · double-click a wall or the floor: bring that point to the centre · click a wall name: front view of that wall · click a unit: select · drag a unit: move it',
         walk: 'Click the view to look around (pointer lock) · WASD/arrows: walk · shift: faster · click: select the unit under the cross · Esc: release mouse',
         plan: 'Drag on empty floor: box select (shift: add) · click/shift-click a dot: select · drag a dot: slide along walls · right-drag: pan · wheel: zoom',
         wall: 'Front view of one wall: drag units on it · draw lines (L) · right-drag: pan · wheel: zoom · ◀ ▶ or [ ] = next wall · 1 = see everything again · tip: double-click a wall in the overview to open it here',
@@ -234,6 +234,39 @@ export function buildUI(app) {
     s.body.append(wh.row,
       h('label', { class: 'row chk' }, opt, ' Corridor walls are mountable (optional, unconfirmed)'),
       h('label', { class: 'row chk' }, exVis, ' Show excluded walls (entry wedge, storage side)'),
+      (() => {
+        const box = h('div', { class: 'props' });
+        const types = { socket: ['Socket', 8, 8], window: ['Window', 100, 120], other: ['Other (vent, switch...)', 20, 20] };
+        const wallSel = h('select', {});
+        for (const w of room.walls) if (w.kind !== 'glass') wallSel.append(h('option', { value: w.id }, `${w.id} (${Math.round(w.length)} cm)`));
+        const render = () => {
+          box.innerHTML = '';
+          for (const f of room.features) {
+            const upd = (k) => (v) => { f[k] = v; room.buildFeatures(); app.autosave(); };
+            box.append(h('details', { class: 'spot' },
+              h('summary', {}, `${types[f.type]?.[0] ?? f.type} ${f.id} · ${f.wall} at ${Math.round(f.s)} cm, h ${Math.round(f.h)} cm`,
+                h('button', { class: 'mini', onclick: (e) => { e.preventDefault(); room.features.splice(room.features.indexOf(f), 1); room.buildFeatures(); render(); app.autosave(); } }, '✕')),
+              numRow('Along wall', { min: 0, max: Math.round(room.wall(f.wall)?.length ?? 1000), value: f.s, unit: 'cm', onChange: upd('s') }).row,
+              numRow('Centre height', { min: 0, max: room.wallHeight, value: f.h, unit: 'cm', onChange: upd('h') }).row,
+              numRow('Width', { min: 2, max: 600, value: f.w, unit: 'cm', onChange: upd('w') }).row,
+              numRow('Height', { min: 2, max: 400, value: f.hgt, unit: 'cm', onChange: upd('hgt') }).row));
+          }
+        };
+        const add = (type) => {
+          const w = room.wall(wallSel.value), [, fw, fh] = types[type];
+          const n = room.features.length + 1;
+          room.features.push({ id: `${type[0].toUpperCase()}${n}`, type, wall: w.id, s: Math.round(w.length / 2), h: type === 'socket' ? 30 : type === 'window' ? 160 : 120, w: fw, hgt: fh });
+          room.buildFeatures(); render(); app.autosave();
+        };
+        ui.renderFeatures = render;
+        render();
+        return h('div', {},
+          h('div', { class: 'sub' }, 'Wall features (sockets, window...)'),
+          h('div', { class: 'row' }, wallSel),
+          h('div', { class: 'btns' }, h('button', { onclick: () => add('socket') }, '+ Socket'), h('button', { onclick: () => add('window') }, '+ Window'), h('button', { onclick: () => add('other') }, '+ Other')),
+          box,
+          h('div', { class: 'help' }, 'Mark the real sockets and the inner-space window so the units and lines can be planned around them.'));
+      })(),
       h('div', { class: 'help' }, 'Geometry comes from sim/room.json (cm). Blue = target walls, orange = optional corridor, grey = excluded. Values marked plan-estimate in that file still need confirming on site.'),
     );
     panel.append(s.el);
@@ -244,20 +277,47 @@ export function buildUI(app) {
     const { grid } = app;
     const s = section('Grid lines — 17×17 white profile', true);
     const info = h('div', { class: 'info' });
-    const drawBtn = h('button', { class: 'hi', onclick: () => app.setDraw(!app.draw.on) }, '✎ Draw lines (L)');
-    ui.setDrawState = (on) => { drawBtn.textContent = on ? '■ Stop drawing (Esc)' : '✎ Draw lines (L)'; drawBtn.classList.toggle('on', on); };
+    const drawBtn = h('button', { class: 'hi', onclick: () => app.setDraw(!(app.draw.on && app.draw.kind === 'line'), 'line') }, '✎ Draw lines (L)');
+    const curveBtn = h('button', { class: 'hi', onclick: () => app.setDraw(!(app.draw.on && app.draw.kind === 'curve'), 'curve') }, '〰 Draw curve (C)');
+    ui.setDrawState = (on) => {
+      const k = app.draw.kind;
+      drawBtn.textContent = on && k === 'line' ? '■ Stop drawing (Esc)' : '✎ Draw lines (L)';
+      curveBtn.textContent = on && k === 'curve' ? '■ Finish curve (Enter)' : '〰 Draw curve (C)';
+    };
     const sel = h('div', { class: 'props' });
     const surfName = (id) => (id === 'FLOOR' ? 'Floor' : id === 'CEIL' ? 'Ceiling' : id);
     const refresh = () => {
       const byS = {};
-      for (const l of grid.lines) byS[surfName(l.surf)] = (byS[surfName(l.surf)] ?? 0) + grid.lengthCm(l);
+      for (const l of grid.lines) { const k = l.type === 'curve' ? 'curves' : l.surf === 'AIR' ? '3D' : surfName(l.surf); byS[k] = (byS[k] ?? 0) + grid.lengthCm(l); }
       info.innerHTML = `<b>${grid.lines.length}</b> lines · total profile <b>${(grid.totalLengthCm() / 100).toFixed(1)} m</b><br>` +
         `<span class="dim">${Object.entries(byS).map(([k, v]) => `${k} ${(v / 100).toFixed(1)} m`).join(' · ') || 'no lines yet'}</span>`;
       sel.innerHTML = '';
       const l = grid.lines.find((x) => x.id === grid.selected);
       if (!l) { sel.append(h('div', { class: 'help' }, 'Click a line (drawing off) to select it · Delete key removes it')); return; }
-      const isF = l.surf === 'FLOOR' || l.surf === 'CEIL';
       const upd = () => { grid.buildLines(); app.editProfiles(); };
+      if (l.type === 'curve') {
+        const sz = grid.curveSizeCm(l);
+        const fits = sz.every((v) => v <= 21);
+        const wall = h('input', { type: 'number', class: 'num', value: 2, min: 1, max: 6, step: 0.2 });
+        sel.append(
+          h('div', { class: 'sub' }, `Curve ${l.id} · ${l.pts.length} points · ${grid.lengthCm(l).toFixed(0)} cm long`),
+          h('div', { class: fits ? 'help' : 'help warn' }, `Size ${sz.map((v) => v.toFixed(0)).join(' × ')} cm — ${fits ? 'fits the Ultimaker 2+ bed (22 × 22 × 20 cm)' : 'TOO BIG for one print on the Ultimaker 2+: split it into shorter curves'}`),
+          h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Channel wall'), wall, h('span', { class: 'unit' }, 'mm')),
+          h('div', { class: 'btns' },
+            h('button', { class: 'hi', onclick: () => app.exportCurve(l.id, +wall.value) }, '⬇ Export this curve for printing (STL)'),
+            h('button', { onclick: () => app.deleteSelectedLine() }, 'Delete curve')));
+        return;
+      }
+      if (l.surf === 'AIR') {
+        const f = (label, arr, k, mx) => numRow(label, { min: k === 2 ? 0 : -100, max: mx, value: Math.round(arr[k]), unit: 'cm', onChange: (v) => { arr[k] = v; upd(); } }).row;
+        sel.append(
+          h('div', { class: 'sub' }, `3D line ${l.id} · through the space · ${grid.lengthCm(l).toFixed(0)} cm`),
+          f('Start x', l.a, 0, 2300), f('Start y', l.a, 1, 1200), f('Start height', l.a, 2, room.wallHeight),
+          f('End x', l.b, 0, 2300), f('End y', l.b, 1, 1200), f('End height', l.b, 2, room.wallHeight),
+          h('div', { class: 'btns' }, h('button', { onclick: () => app.deleteSelectedLine() }, 'Delete line')));
+        return;
+      }
+      const isF = l.surf === 'FLOOR' || l.surf === 'CEIL';
       const f = (label, arr, k) => numRow(label, { min: isF ? -100 : 0, max: isF ? 2300 : Math.round(room.wall(l.surf)?.length ?? 2000), value: Math.round(arr[k]), unit: 'cm', onChange: (v) => { arr[k] = v; upd(); } }).row;
       sel.append(
         h('div', { class: 'sub' }, `Line ${l.id} · ${isF ? surfName(l.surf).toLowerCase() : `wall ${l.surf}`} · ${grid.lengthCm(l).toFixed(0)} cm`),
@@ -271,11 +331,13 @@ export function buildUI(app) {
     const su = h('input', { type: 'checkbox', checked: app.draw.snapUnits, onchange: (e) => (app.draw.snapUnits = e.target.checked) });
     const step = h('input', { type: 'number', class: 'num', value: app.draw.step, min: 0, max: 100, onchange: (e) => (app.draw.step = +e.target.value) });
     s.body.append(info,
-      h('div', { class: 'btns' }, drawBtn,
+      h('div', { class: 'btns' }, drawBtn, curveBtn),
+      h('div', { class: 'btns' },
+        h('button', { onclick: () => app.exportJunctions(), title: 'Every point where 2+ lines meet, with the directions of the lines: send this file to get exact printable connectors' }, '⬇ Junctions for connectors'),
         h('button', { onclick: () => { if (!confirm('Remove all grid lines?')) return; grid.setLines([]); app.editProfiles(); } }, 'Clear all'),
         h('button', { onclick: () => { grid.setLines(grid.defaultLines()); app.editProfiles(); }, title: 'The wall grid that continues the ceiling grid: each ceiling-grid line becomes a vertical line where it meets a wall, joined to the ceiling grid by a short ceiling line' }, 'Wall grid from ceiling grid'),
       ),
-      h('div', { class: 'help' }, 'Drawing: click on a wall or the floor to start, click again to end the line — it continues from there, so you can draw a path. Click the same point twice or press Esc to stop. Shift = straight (horizontal / vertical). Ends snap to unit tips and to other line ends.'),
+      h('div', { class: 'help' }, 'Lines: click on a wall or the floor to start, click again to end — the line continues from there (a path). Click the same point twice or Esc to stop. Shift = straight. End a line on another wall / the floor and it goes straight through the space (3D line); set its heights exactly when it is selected. Curves (C): click the points the curve passes through, Enter or Esc to finish; select a curve to export it for 3D printing as a hollow channel. Ends snap to unit tips and to other line ends.'),
       h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Snap step'), step, h('span', { class: 'unit' }, 'cm')),
       h('label', { class: 'row chk' }, su, ' Snap line ends to unit tips (wire exit)'),
       h('label', { class: 'row chk' }, pv, ' Show grid lines'),
@@ -418,6 +480,6 @@ export function buildUI(app) {
     panel.append(s.el);
   }
 
-  ui.refreshAll = () => { ui.refreshProfiles?.(); ui.refreshPartitions?.(); ui.refreshSelection?.(); };
+  ui.refreshAll = () => { ui.refreshProfiles?.(); ui.refreshPartitions?.(); ui.refreshSelection?.(); ui.renderFeatures?.(); };
   return ui;
 }

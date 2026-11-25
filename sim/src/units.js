@@ -208,7 +208,7 @@ export class Units {
       this.clampUnit(u);
       const m = (this.baseMatrices[i] = this.unitMatrix(u, this.baseMatrices[i] ?? new THREE.Matrix4()));
       const pz = this.room.unitPlan(u);
-      u.zone = zoneOf(this.room, pz.x, pz.y);
+      u.zone = zoneOf(this.room, pz.x + pz.n[0] * 10, pz.y + pz.n[1] * 10); // 10 cm into the room: wall faces sit on zone borders
       if (u.hidden) m.multiply(this._zero ??= new THREE.Matrix4().makeScale(1e-6, 1e-6, 1e-6));
       const glow = this.led.on && !u.hidden && u.zone === this.led.zone;
       const lc = glow ? new THREE.Color(this.led.colour).multiplyScalar(this.led.intensity) : new THREE.Color(0);

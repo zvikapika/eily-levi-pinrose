@@ -155,7 +155,7 @@ export class Grid {
 
   setLines(list) {
     // accept the round-2 profile format ({wall, dir, s0, s1, h0, h1}) too
-    this.lines = (list ?? []).map((p) => (p.surf ? { ...p, a: [...p.a], b: [...p.b] }
+    this.lines = (list ?? []).map((p) => (p.type === 'curve' ? { ...p, pts: p.pts.map((q) => [...q]) } : p.surf ? { ...p, a: [...p.a], b: [...p.b] }
       : { id: p.id, surf: p.wall, a: [p.s0, p.h0], b: p.dir === 'v' ? [p.s0, p.h1] : [p.s1, p.h0] }));
     this.nextId = 1 + Math.max(0, ...this.lines.map((p) => +String(p.id).replace(/\D/g, '') || 0));
     if (this.selected && !this.lines.some((l) => l.id === this.selected)) this.selected = null;
@@ -166,6 +166,7 @@ export class Grid {
   // surface coordinates -> world point (metres), sitting half a profile off the surface
   toWorld(surf, uv, out = new THREE.Vector3()) {
     const sz = this.pcfg.sizeCm ?? 1.7;
+    if (surf === 'AIR') return out.set(uv[0] * CM, uv[2] * CM, uv[1] * CM); // free 3D point: plan x, plan y, height
     if (surf === 'FLOOR') return out.set(uv[0] * CM, (sz / 2) * CM, uv[1] * CM);
     if (surf === 'CEIL') return out.set(uv[0] * CM, (this.room.wallHeight - sz / 2) * CM, uv[1] * CM);
     const w = this.room.wall(surf);
@@ -174,11 +175,17 @@ export class Grid {
   }
   // world point -> surface coordinates
   toSurf(surf, v) {
+    if (surf === 'AIR') return [v.x / CM, v.z / CM, v.y / CM];
     if (surf === 'FLOOR' || surf === 'CEIL') return [v.x / CM, v.z / CM];
     const w = this.room.wall(surf);
     return [this.room.projectOnWall(w, v.x / CM, v.z / CM).s, v.y / CM];
   }
-  surfNormal(surf) {
+  surfNormal(surf, dir) {
+    if (surf === 'AIR') {
+      // free line: keep the square section upright (one face up) unless the line is vertical
+      const up = Math.abs(dir?.y ?? 0) > 0.95 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      return up;
+    }
     if (surf === 'FLOOR') return new THREE.Vector3(0, 1, 0);
     if (surf === 'CEIL') return new THREE.Vector3(0, -1, 0);
     const n = this.room.wall(surf).segs[0].n;
@@ -188,7 +195,7 @@ export class Grid {
   clampLine(l) {
     const w = this.room.wall(l.surf);
     if (!w) return;
-    if (l.surf === 'FLOOR' || l.surf === 'CEIL') return;
+    if (l.surf === 'FLOOR' || l.surf === 'CEIL' || l.surf === 'AIR') return;
     const H = this.room.wallHeight;
     for (const p of [l.a, l.b]) { p[0] = Math.max(0, Math.min(w.length, p[0])); p[1] = Math.max(0, Math.min(H, p[1])); }
   }
@@ -199,7 +206,7 @@ export class Grid {
     const len = A.distanceTo(B);
     if (len < 1e-4) return null;
     const X = B.clone().sub(A).normalize();
-    const N = this.surfNormal(l.surf);
+    const N = this.surfNormal(l.surf, X);
     const Y = new THREE.Vector3().crossVectors(N, X).normalize();
     const Z = new THREE.Vector3().crossVectors(X, Y);
     const m = new THREE.Mesh(new THREE.BoxGeometry(len + sz, sz, sz), mat); // + sz: square ends meet at the joints
@@ -214,9 +221,11 @@ export class Grid {
     for (const c of [...this.prof.children]) { this.prof.remove(c); c.geometry?.dispose(); }
     this.lineMeshes = [];
     for (const l of this.lines) {
+      const mat = this.selected === l.id ? this.profSelMat : this.profMat;
+      if (l.type === 'curve') { const m = this.curveMesh(l, mat); if (m) { this.prof.add(m); this.lineMeshes.push(m); } continue; }
       this.clampLine(l);
-      if (l.surf !== 'CEIL' && !this.room.wall(l.surf)) continue;
-      const m = this.lineMesh(l, this.selected === l.id ? this.profSelMat : this.profMat);
+      if (l.surf !== 'CEIL' && l.surf !== 'AIR' && !this.room.wall(l.surf)) continue;
+      const m = this.lineMesh(l, mat);
       if (!m) continue;
       this.prof.add(m);
       this.lineMeshes.push(m);
@@ -231,7 +240,7 @@ export class Grid {
     if (this.previewMesh) { this.prof.remove(this.previewMesh); this.previewMesh.geometry.dispose(); this.previewMesh = null; }
     if (!l) return;
     this.previewMat ??= new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.75 });
-    const m = this.lineMesh(l, this.previewMat);
+    const m = l.type === 'curve' ? this.curveMesh(l, this.previewMat) : this.lineMesh(l, this.previewMat);
     if (m) { this.previewMesh = m; this.prof.add(m); }
   }
 
@@ -240,7 +249,69 @@ export class Grid {
   setCeilingGridVisible(v) { this.ceilingVisible = v; this.ceil.visible = v; }
   setProfilesVisible(v) { this.profilesVisible = v; this.prof.visible = v; }
 
-  lengthCm(l) { return Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1]); }
+  lengthCm(l) {
+    if (l.type === 'curve') return this.curveOf(l).getLength() / CM;
+    return this.toWorld(l.surf, l.a).distanceTo(this.toWorld(l.surf, l.b)) / CM;
+  }
   totalLengthCm() { return this.lines.reduce((a, l) => a + this.lengthCm(l), 0); }
-  toJSON() { return this.lines.map((l) => ({ id: l.id, surf: l.surf, a: [...l.a], b: [...l.b] })); }
+  toJSON() { return this.lines.map((l) => (l.type === 'curve' ? { id: l.id, type: 'curve', pts: l.pts.map((p) => [...p]) } : { id: l.id, surf: l.surf, a: [...l.a], b: [...l.b] })); }
+
+  // ------------------------------------------------------------ curves (printed rails): pts = [[x, y, h], ...] plan cm
+  curveOf(l) { return new THREE.CatmullRomCurve3(l.pts.map((p) => new THREE.Vector3(p[0] * CM, p[2] * CM, p[1] * CM)), false, 'centripetal'); }
+  // square section swept along the curve; hollow = printable channel (outer 17, wall `wallMm`) in mm for export
+  curveGeometry(l, { mm = false, hollow = false, wallMm = 2 } = {}) {
+    const sz = (this.pcfg.sizeCm ?? 1.7) * CM, k = mm ? 1000 : 1;
+    const curve = this.curveOf(l);
+    const h = (sz / 2) * k;
+    const shape = new THREE.Shape([new THREE.Vector2(-h, -h), new THREE.Vector2(h, -h), new THREE.Vector2(h, h), new THREE.Vector2(-h, h)]);
+    if (hollow) {
+      const i = h - (wallMm / 1000) * k;
+      shape.holes.push(new THREE.Path([new THREE.Vector2(-i, -i), new THREE.Vector2(-i, i), new THREE.Vector2(i, i), new THREE.Vector2(i, -i)]));
+    }
+    const path = mm ? new THREE.CatmullRomCurve3(curve.points.map((p) => p.clone().multiplyScalar(1000)), false, 'centripetal') : curve;
+    const steps = Math.max(8, Math.round(curve.getLength() / 0.01));
+    return new THREE.ExtrudeGeometry(shape, { steps, bevelEnabled: false, extrudePath: path });
+  }
+  curveMesh(l, mat) {
+    if (!l.pts || l.pts.length < 2) return null;
+    const m = new THREE.Mesh(this.curveGeometry(l), mat);
+    m.castShadow = true; m.receiveShadow = true;
+    m.userData.lineId = l.id;
+    return m;
+  }
+  curveSizeCm(l) {
+    const b = new THREE.Box3().setFromPoints(this.curveOf(l).getPoints(100));
+    const s = b.getSize(new THREE.Vector3());
+    return [s.x / CM + 1.7, s.z / CM + 1.7, s.y / CM + 1.7];
+  }
+
+  // ------------------------------------------------------------ junctions (where line ends meet) -> printable connectors
+  junctions(tolCm = 1.5) {
+    const ends = [];
+    for (const l of this.lines) {
+      if (l.type === 'curve') {
+        const c = this.curveOf(l), n = l.pts.length;
+        for (const [t, i] of [[0, 0], [1, n - 1]]) {
+          const P = c.getPointAt(t), T = c.getTangentAt(t).multiplyScalar(t === 0 ? 1 : -1);
+          ends.push({ line: l.id, p: P, dir: T, surf: 'AIR', i });
+        }
+        continue;
+      }
+      const A = this.toWorld(l.surf, l.a), B = this.toWorld(l.surf, l.b);
+      const d = B.clone().sub(A).normalize();
+      ends.push({ line: l.id, p: A, dir: d, surf: l.surf }, { line: l.id, p: B, dir: d.clone().negate(), surf: l.surf });
+    }
+    const nodes = [];
+    for (const e of ends) {
+      let n = nodes.find((q) => q.p.distanceTo(e.p) < tolCm * CM);
+      if (!n) { n = { p: e.p.clone(), arms: [] }; nodes.push(n); }
+      n.arms.push(e);
+    }
+    return nodes.filter((n) => n.arms.length >= 2).map((n, k) => ({
+      id: `J${String(k + 1).padStart(2, '0')}`,
+      at_cm: [n.p.x / CM, n.p.z / CM, n.p.y / CM].map((v) => Math.round(v * 10) / 10),
+      arms: n.arms.map((a) => ({ line: a.line, surface: a.surf, dir: [a.dir.x, a.dir.z, a.dir.y].map((v) => Math.round(v * 1000) / 1000),
+        back: a.surf === 'AIR' ? null : (() => { const N = this.surfNormal(a.surf); return [-N.x, -N.z, -N.y]; })() })),
+    }));
+  }
 }

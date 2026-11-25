@@ -116,6 +116,8 @@ export class Room {
       }
     }
     this.buildDoors(H);
+    this.buildSkirting();
+    this.buildFeatures();
     // floor (gallery polygon) + a larger ground slab for everything outside it
     const shape = new THREE.Shape(this.data.floorPolygon.map(([x, y]) => new THREE.Vector2(x * CM, -y * CM)));
     const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), this.floorMat);
@@ -140,6 +142,65 @@ export class Room {
     this.ceiling.visible = this._ceilingVisible ?? false;
     this.group.add(this.ceiling);
     this.buildPlanOverlay();
+  }
+
+  // dark skirting on every solid wall face (photos)
+  buildSkirting() {
+    const sk = this.data.skirting;
+    if (!sk) return;
+    this.skirtMat ??= new THREE.MeshStandardMaterial({ color: sk.colour ?? 0x3b3b3b, roughness: 0.7 });
+    for (const w of this.walls) {
+      if (w.kind === 'glass') continue;
+      for (const g of w.segs) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(g.len * CM, sk.heightCm * CM, sk.depthCm * CM), this.skirtMat);
+        m.position.set(((g.a[0] + g.b[0]) / 2 + g.n[0] * sk.depthCm / 2) * CM, (sk.heightCm / 2) * CM, ((g.a[1] + g.b[1]) / 2 + g.n[1] * sk.depthCm / 2) * CM);
+        m.rotation.y = Math.atan2(-g.u[1], g.u[0]);
+        m.receiveShadow = true;
+        m.userData.skirting = true;
+        this.group.add(m);
+      }
+    }
+  }
+
+  // sockets / window / other things on the walls: {id, type: 'socket'|'window'|'other', wall, s, h, w, hgt} (cm, centre)
+  get features() { return (this.data.wallFeatures ??= { items: [] }).items; }
+  buildFeatures() {
+    if (this.featGroup) { this.group.remove(this.featGroup); this.featGroup.traverse((o) => o.geometry?.dispose()); }
+    const G = (this.featGroup = new THREE.Group());
+    this.featMats ??= {
+      socket: new THREE.MeshStandardMaterial({ color: 0xf7f7f5, roughness: 0.4 }),
+      window: new THREE.MeshStandardMaterial({ color: 0x9fc4d6, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.55 }),
+      frame: new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: 0.4, metalness: 0.5 }),
+      other: new THREE.MeshStandardMaterial({ color: 0xff5a5a, roughness: 0.6 }),
+    };
+    for (const f of this.features) {
+      const w = this.byId.get(f.wall);
+      if (!w) continue;
+      const p = this.pointAt(w, f.s);
+      const rot = Math.atan2(-p.u[1], p.u[0]);
+      const depth = f.type === 'window' ? 1.0 : f.type === 'socket' ? 2.0 : 1.0;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(f.w * CM, f.hgt * CM, depth * CM), this.featMats[f.type] ?? this.featMats.other);
+      m.position.set((p.x + p.n[0] * depth / 2) * CM, f.h * CM, (p.y + p.n[1] * depth / 2) * CM);
+      m.rotation.y = rot;
+      m.userData.feature = f.id;
+      G.add(m);
+      if (f.type === 'window') {
+        const fr = new THREE.Mesh(new THREE.BoxGeometry((f.w + 6) * CM, (f.hgt + 6) * CM, 0.6 * CM), this.featMats.frame);
+        fr.position.copy(m.position).add(new THREE.Vector3(-p.n[0] * 0.004, 0, -p.n[1] * 0.004));
+        fr.rotation.y = rot;
+        G.add(fr);
+      }
+      if (f.type === 'socket') {
+        for (const dx of [-1, 1]) {
+          const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * CM, 0.2 * CM, 0.4 * CM, 10), this.featMats.frame);
+          hole.rotation.x = Math.PI / 2; hole.rotation.z = 0;
+          const o = new THREE.Group(); o.rotation.y = rot; o.position.copy(m.position);
+          hole.position.set(dx * 1.0 * CM, 0, depth / 2 * CM);
+          o.add(hole); G.add(o);
+        }
+      }
+    }
+    this.group.add(G);
   }
 
   // glass doors: frames + one handle per leaf (2 leaves = 2 handles)

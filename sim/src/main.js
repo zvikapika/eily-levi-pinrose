@@ -58,6 +58,8 @@ const orbit = new OrbitControls(persp, renderer.domElement);
 orbit.target.set(10.3, 0.3, 5.0);
 orbit.enableDamping = true;
 orbit.maxPolarAngle = Math.PI * 0.495;
+orbit.zoomToCursor = true;          // the wheel zooms toward the point under the cursor (Eily: the view must not 'run away')
+orbit.screenSpacePanning = true;
 orbit.update();
 const planCtl = new OrbitControls(ortho, renderer.domElement);
 planCtl.target.set(center.x, 0, center.z);
@@ -107,7 +109,8 @@ function showLabels() { const v = (app.mode === 'plan' || app.mode === 'overview
 // ------------------------------------------------------------------ app state
 const app = {
   room, units, lighting, grid, partitions, seed: 1, mode: 'overview', labelsOn: true, cutaway: true, unitDots: true,
-  draw: { on: false, start: null, step: 5, snapUnits: true }, setDraw, deleteSelectedLine, onLinesChanged: null,
+  draw: { on: false, kind: 'line', start: null, curve: null, step: 5, snapUnits: true }, setDraw, deleteSelectedLine, onLinesChanged: null,
+  exportCurve, exportJunctions,
   setAllMotors, editProfiles, exportSTL,
   setUnitDots(v) { app.unitDots = v; units.dots.visible = v && app.mode === 'overview'; },
   setMode, select, editSelected, viewWall, wallList, currentWall: null, setUnits, loadLayout, autosave, toast,
@@ -162,6 +165,7 @@ function loadLayout(d) {
   else if (Array.isArray(d.profiles)) grid.setLines(d.profiles);
   if (d.partitions) partitions.fromJSON(d.partitions);
   if (d.led) units.led = { ...units.led, ...d.led };
+  if (Array.isArray(d.wallFeatures)) { room.data.wallFeatures = { items: d.wallFeatures }; room.buildFeatures(); }
   // units left on walls that are no longer mountable (e.g. the glass facade) move to the nearest mountable wall
   let moved = 0;
   for (const u of d.units) {
@@ -259,9 +263,12 @@ function editProfiles() {
   app.onLinesChanged?.();
 }
 // ---- drawing grid lines on walls / floor
-function setDraw(on) {
+function setDraw(on, kind = app.draw.kind ?? 'line') {
+  if (!on && app.draw.curve) finishCurve();
   app.draw.on = on;
+  app.draw.kind = kind;
   app.draw.start = null;
+  app.draw.curve = null;
   grid.setPreview(null);
   canvas.style.cursor = on ? 'crosshair' : '';
   ui.setDrawState?.(on);
@@ -311,30 +318,83 @@ function snapUV(surf, uv, from, shift) {
   if (shift && from) { if (Math.abs(u - from[0]) > Math.abs(v - from[1])) v = from[1]; else u = from[0]; }
   return [Math.round(u * 10) / 10, Math.round(v * 10) / 10];
 }
-function drawClick(e) {
+// one drawing step: a snapped point on a surface + its world position (and plan x, y, height for 3D use)
+function drawPoint(e) {
   const hit = surfaceHit(e.clientX, e.clientY);
-  if (!hit) return toast('Click on a wall or the floor', true);
+  if (!hit) return null;
   const st = app.draw.start;
-  if (st && st.surf !== hit.surf) { toast('A line stays on one surface: end it on the same wall / floor (or Esc)', true); return; }
-  const uv = snapUV(hit.surf, hit.uv, st?.uv, e.shiftKey);
-  if (!st) { app.draw.start = { surf: hit.surf, uv }; return; }
-  if (Math.hypot(uv[0] - st.uv[0], uv[1] - st.uv[1]) < 2) { app.draw.start = null; grid.setPreview(null); return; } // same point twice = finish
-  grid.lines.push({ id: grid.newId(), surf: hit.surf, a: st.uv, b: uv });
-  app.draw.start = { surf: hit.surf, uv }; // keep drawing from the end point (polyline); Esc / click the same point to stop
+  const uv = snapUV(hit.surf, hit.uv, st && st.surf === hit.surf ? st.uv : null, e.shiftKey);
+  const w = grid.toWorld(hit.surf, uv);
+  // snap to the end of a 3D line / curve nearby (those don't belong to a surface)
+  for (const l of grid.lines) {
+    const pts = l.type === 'curve' ? [l.pts[0], l.pts[l.pts.length - 1]].map((q) => grid.toWorld('AIR', q)) : l.surf === 'AIR' ? [l.a, l.b].map((q) => grid.toWorld('AIR', q)) : [];
+    for (const q of pts) if (q.distanceTo(w) < 0.08) return { surf: 'AIR', uv: grid.toSurf('AIR', q), w: q, air: true };
+  }
+  return { surf: hit.surf, uv, w };
+}
+const air = (pt) => grid.toSurf('AIR', pt.w).map((v) => Math.round(v * 10) / 10);
+function finishCurve() {
+  const c = app.draw.curve;
+  if (c && c.length >= 2) { grid.lines.push({ id: grid.newId(), type: 'curve', pts: c.map((q) => [...q]) }); editProfiles(); toast('Curve added — select it to export it for printing'); }
+  app.draw.curve = null; app.draw.start = null; grid.setPreview(null);
+}
+function drawClick(e) {
+  const pt = drawPoint(e);
+  if (!pt) return toast('Click on a wall, the floor or the end of a line', true);
+  if (app.draw.kind === 'curve') {
+    const c = (app.draw.curve ??= []);
+    const q = air(pt);
+    if (c.length && Math.hypot(q[0] - c[c.length - 1][0], q[1] - c[c.length - 1][1], q[2] - c[c.length - 1][2]) < 2) return finishCurve(); // same point twice = finish
+    c.push(q);
+    app.draw.start = pt;
+    return;
+  }
+  const st = app.draw.start;
+  if (!st) { app.draw.start = pt; return; }
+  if (pt.w.distanceTo(st.w) < 0.02) { app.draw.start = null; grid.setPreview(null); return; } // same point twice = finish
+  if (st.surf === pt.surf && !pt.air) grid.lines.push({ id: grid.newId(), surf: pt.surf, a: st.uv, b: pt.uv });
+  else grid.lines.push({ id: grid.newId(), surf: 'AIR', a: air(st), b: air(pt) }); // between two surfaces: a 3D line through the space
+  app.draw.start = pt; // keep drawing from the end point (polyline); Esc / click the same point to stop
   grid.setPreview(null);
   editProfiles();
 }
 function drawMove(e) {
   const st = app.draw.start;
   if (!st) return;
-  const hit = surfaceHit(e.clientX, e.clientY);
-  if (!hit || hit.surf !== st.surf) { grid.setPreview(null); return; }
-  grid.setPreview({ id: 'preview', surf: st.surf, a: st.uv, b: snapUV(hit.surf, hit.uv, st.uv, e.shiftKey) });
+  const pt = drawPoint(e);
+  if (!pt) { grid.setPreview(null); return; }
+  if (app.draw.kind === 'curve') { grid.setPreview({ id: 'preview', type: 'curve', pts: [...app.draw.curve, air(pt)] }); return; }
+  grid.setPreview(st.surf === pt.surf && !pt.air ? { id: 'preview', surf: st.surf, a: st.uv, b: pt.uv } : { id: 'preview', surf: 'AIR', a: air(st), b: air(pt) });
 }
 function pickLine(x, y) {
   ray.setFromCamera(toNDC(x, y), activeCam());
   const hits = ray.intersectObjects(grid.lineMeshes, false).filter((h) => app.mode !== 'wall' || h.distance > WALL_CAM_D - WALL_SLAB);
   return hits.length ? hits[0].object.userData.lineId : null;
+}
+function saveBlob(name, data, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], { type }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+// a printable curved rail: hollow square channel (outer = profile size), mm, Z up, lying on the bed
+function exportCurve(id, wallMm = 2) {
+  const l = grid.lines.find((x) => x.id === id && x.type === 'curve');
+  if (!l) return toast('Select a curve first', true);
+  const g = grid.curveGeometry(l, { mm: true, hollow: true, wallMm });
+  g.applyMatrix4(new THREE.Matrix4().makeRotationX(Math.PI / 2)); // Y up -> Z up
+  g.computeBoundingBox();
+  const bb = g.boundingBox;
+  g.translate(-(bb.min.x + bb.max.x) / 2, -(bb.min.y + bb.max.y) / 2, -bb.min.z);
+  const data = new STLExporter().parse(new THREE.Mesh(g), { binary: true });
+  saveBlob(`pinrose-rail-${id}.stl`, data, 'model/stl');
+}
+// every junction (2+ line ends meeting) with its arm directions: send this file to get exact printable connectors
+function exportJunctions() {
+  const j = grid.junctions();
+  saveBlob('pinrose-junctions.json', JSON.stringify({ format: 'pinrose-junctions', version: 1, profileMm: (grid.pcfg.sizeCm ?? 1.7) * 10, junctions: j }, null, 1), 'application/json');
+  toast(`${j.length} junction(s) exported`);
 }
 function exportSTL() {
   // static snapshot of the whole scene (metres -> mm), for SketchUp (STL import needs a SketchUp subscription)
@@ -420,8 +480,10 @@ addEventListener('keydown', (e) => {
     if (app.mode === 'wall' && (e.code === 'BracketRight' || e.code === 'PageDown')) stepWall(1);
     if (app.mode === 'wall' && (e.code === 'BracketLeft' || e.code === 'PageUp')) stepWall(-1);
     if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA') { e.preventDefault(); select([...units.units.keys()]); }
-    if (e.code === 'KeyL') setDraw(!app.draw.on);
-    if (e.code === 'Escape' && app.draw.on) { if (app.draw.start) { app.draw.start = null; grid.setPreview(null); } else setDraw(false); }
+    if (e.code === 'KeyL') setDraw(!(app.draw.on && app.draw.kind === 'line'), 'line');
+    if (e.code === 'KeyC' && !(e.ctrlKey || e.metaKey)) setDraw(!(app.draw.on && app.draw.kind === 'curve'), 'curve');
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter') && app.draw.curve) finishCurve();
+    if (e.code === 'Escape' && app.draw.on) { if (app.draw.curve) finishCurve(); else if (app.draw.start) { app.draw.start = null; grid.setPreview(null); } else setDraw(false); }
     if ((e.code === 'Delete' || e.code === 'Backspace') && grid.selected) { e.preventDefault(); deleteSelectedLine(); }
   }
 });
@@ -527,11 +589,16 @@ addEventListener('pointerdown', (e) => {
   }
 }, { capture: true });
 
+// double-click in the overview: glide the view centre (the orbit pivot) to the clicked point on a wall / the floor
+let glide = null;
 canvas.addEventListener('dblclick', (e) => {
   if (app.mode !== 'overview' || app.draw.on) return;
   ray.setFromCamera(toNDC(e.clientX, e.clientY), persp);
-  const hits = ray.intersectObjects(room.wallMeshes.filter((m) => m.visible && m.material !== room.ghostMat && room.mountable(room.wall(m.userData.wallId))), false);
-  if (hits.length) viewWall(hits[0].object.userData.wallId);
+  const hits = ray.intersectObjects([...room.wallMeshes.filter((m) => m.visible && m.material !== room.ghostMat), room.floorMesh], false);
+  if (!hits.length) return;
+  const to = hits[0].point.clone();
+  const shift = to.clone().sub(orbit.target);
+  glide = { t: 0, from: orbit.target.clone(), camFrom: persp.position.clone(), shift };
 });
 
 addEventListener('pointermove', (e) => {
@@ -648,7 +715,28 @@ function tick(now) {
       const [nx, ny] = room.collide((persp.position.x + mv.x) / CM, (persp.position.z + mv.z) / CM, 30);
       persp.position.set(nx * CM, EYE_HEIGHT_CM * CM, ny * CM);
     }
-  } else if (app.mode === 'overview') orbit.update();
+  } else if (app.mode === 'overview') {
+    // WASD / arrows: slide the view sideways / forward (on the floor plane), Q / E: down / up - the view keeps its angle
+    const sp = 3.0 * (keys.ShiftLeft || keys.ShiftRight ? 3 : 1) * dt;
+    persp.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
+    side.crossVectors(fwd, persp.up).normalize();
+    const mv = new THREE.Vector3();
+    if (keys.KeyW || keys.ArrowUp) mv.add(fwd);
+    if (keys.KeyS || keys.ArrowDown) mv.sub(fwd);
+    if (keys.KeyD || keys.ArrowRight) mv.add(side);
+    if (keys.KeyA || keys.ArrowLeft) mv.sub(side);
+    if (keys.KeyE) mv.y += 1;
+    if (keys.KeyQ) mv.y -= 1;
+    if (mv.lengthSq() && !(keys.ControlLeft || keys.MetaLeft)) { mv.normalize().multiplyScalar(sp); persp.position.add(mv); orbit.target.add(mv); }
+    if (glide) {
+      glide.t = Math.min(1, glide.t + dt / 0.45);
+      const k = glide.t * glide.t * (3 - 2 * glide.t);
+      orbit.target.copy(glide.from).addScaledVector(glide.shift, k);
+      persp.position.copy(glide.camFrom).addScaledVector(glide.shift, k);
+      if (glide.t >= 1) glide = null;
+    }
+    orbit.update();
+  }
   else if (app.mode === 'wall') elevCtl.update();
   else planCtl.update();
   units.animate(dt);

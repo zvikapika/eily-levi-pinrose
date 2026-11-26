@@ -133,3 +133,4 @@ For the 17×17 snap-lid cable trunking that carries the power to the units. Foll
 - **Exact connectors:** `connectors.py pinrose-junctions.json` (exported from the sim) makes one connector per junction.
 - **`check_connectors.py`:** pushes a 17×17 stub into every arm (0 overlap) and checks the cable path is open from every mouth to the centre. It also renders `connectors_starter_set.png`.
 - **To confirm:** the real trunking size (`PROFILE_W/H`), the lid side and the play. In-plane connectors print with their open back on the bed; 3D corners need supports or a different orientation.
+- **Rev 4:** no corner drill guides. The dog-bone holes straddled the notch corners, so after the tab was snapped out they stayed as small round bites outside the square (Eily's print). The saw cuts end on the band and the knife score joins them; file the corners.

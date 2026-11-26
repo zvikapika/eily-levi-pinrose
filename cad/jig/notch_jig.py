@@ -8,11 +8,11 @@ Use (one jig per wall shape):
   - notch_jig_round.stl    : the round end (inner radius ~41.5 mm)
   1. Slide the jig over the wall from the rim (wall in the slot, the top plate resting on the rim), centre mark on your
      pencil mark.
-  2. Drill the 2 corner holes through the guides at the bottom corners of the opening (Ø2.5 drill): the round
-     corners stop the PLA from cracking.
+  2. (no drilling - rev 4)
   3. Saw down along both side faces of the opening (fine saw, blade against the face, on the opening side) until the
      blade stops on the band (17.5 mm).
-  4. Score the bottom line with a knife along the band's top edge, bend the tab out, file clean.
+  4. Score the bottom line with a knife along the band's top edge, several passes, right into both saw cuts;
+     bend the tab out (pliers), file the corners clean.
 
 Print: as in the file - top plate on the bed (the U upside down), no supports, brim, 100 % infill.
 Run: cad/.venv/bin/python cad/jig/notch_jig.py  -> cad/out_jig/
@@ -31,6 +31,7 @@ from pinrose_v2 import U, D, prism, save  # noqa: E402
 WALL_T = 1.6
 NOTCH_W = 18.0          # notch width (17 mm profile + 1 mm play)
 NOTCH_D = 17.5          # notch depth from the rim
+CORNER_HOLES = False     # rev 3 dog-bone drill guides (left visible holes outside the notch)
 GUIDE_OFFSET = 0.5      # end-block face sits this far outside the notch edge (a 0.5 mm blade then cuts on the line)
 CORNER_D = 2.5          # corner relief holes (drill)
 TOP_T = 3.0             # top plate resting on the rim
@@ -90,7 +91,10 @@ def build(round_end=False):
     jig = U(top, cheeks)
     opening = box(-u_face, -100, u_face, 100)        # straight-sided, so both cuts are parallel planes
     cuts = [zprism(opening.intersection(foot.buffer(1)), -1, z_line)]
-    cuts += [hole_along_v(sx * (NOTCH_W / 2 + GUIDE_OFFSET / 2), z_line, CORNER_D, hl) for sx in (1, -1)]
+    # rev 4 (Eily): no corner drill guides - a dog-bone hole straddling the corner left a visible round bite outside
+    # the square after the tab was snapped out. The saw cuts end on the band and the knife score joins them.
+    if CORNER_HOLES:
+        cuts += [hole_along_v(sx * (NOTCH_W / 2 + GUIDE_OFFSET / 2), z_line, CORNER_D, hl) for sx in (1, -1)]
     return D(jig, *cuts)
 
 

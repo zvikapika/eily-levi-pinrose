@@ -155,8 +155,14 @@ export class Grid {
 
   setLines(list) {
     // accept the round-2 profile format ({wall, dir, s0, s1, h0, h1}) too
-    this.lines = (list ?? []).map((p) => (p.type === 'curve' ? { ...p, pts: p.pts.map((q) => [...q]) } : p.surf ? { ...p, a: [...p.a], b: [...p.b] }
+    this.lines = (list ?? []).map((p) => (p.type === 'curve' || p.type === 'arc' ? { ...p, pts: p.pts.map((q) => [...q]) } : p.surf ? { ...p, a: [...p.a], b: [...p.b] }
       : { id: p.id, surf: p.wall, a: [p.s0, p.h0], b: p.dir === 'v' ? [p.s0, p.h1] : [p.s1, p.h0] }));
+    // Eily: curves are arcs. Older free curves become the arc through their start, their middle and their end
+    for (const l of this.lines) if (l.type === 'curve' && l.pts.length >= 2) {
+      const c = this.curveOf(l), m = c.getPointAt(0.5);
+      l.type = 'arc';
+      l.pts = [l.pts[0], [m.x / CM, m.z / CM, m.y / CM], l.pts[l.pts.length - 1]];
+    }
     this.nextId = 1 + Math.max(0, ...this.lines.map((p) => +String(p.id).replace(/\D/g, '') || 0));
     if (this.selected && !this.lines.some((l) => l.id === this.selected)) this.selected = null;
     this.buildLines();
@@ -222,7 +228,7 @@ export class Grid {
     this.lineMeshes = [];
     for (const l of this.lines) {
       const mat = this.selected === l.id ? this.profSelMat : this.profMat;
-      if (l.type === 'curve') { const m = this.curveMesh(l, mat); if (m) { this.prof.add(m); this.lineMeshes.push(m); } continue; }
+      if (l.type === 'curve' || l.type === 'arc') { const m = this.curveMesh(l, mat); if (m) { this.prof.add(m); this.lineMeshes.push(m); } continue; }
       this.clampLine(l);
       if (l.surf !== 'CEIL' && l.surf !== 'AIR' && !this.room.wall(l.surf)) continue;
       const m = this.lineMesh(l, mat);
@@ -240,7 +246,7 @@ export class Grid {
     if (this.previewMesh) { this.prof.remove(this.previewMesh); this.previewMesh.geometry.dispose(); this.previewMesh = null; }
     if (!l) return;
     this.previewMat ??= new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.75 });
-    const m = l.type === 'curve' ? this.curveMesh(l, this.previewMat) : this.lineMesh(l, this.previewMat);
+    const m = l.type === 'curve' || l.type === 'arc' ? this.curveMesh(l, this.previewMat) : this.lineMesh(l, this.previewMat);
     if (m) { this.previewMesh = m; this.prof.add(m); }
   }
 
@@ -250,14 +256,18 @@ export class Grid {
   setProfilesVisible(v) { this.profilesVisible = v; this.prof.visible = v; }
 
   lengthCm(l) {
-    if (l.type === 'curve') return this.curveOf(l).getLength() / CM;
+    if (l.type === 'curve' || l.type === 'arc') return this.curveOf(l).getLength() / CM;
     return this.toWorld(l.surf, l.a).distanceTo(this.toWorld(l.surf, l.b)) / CM;
   }
   totalLengthCm() { return this.lines.reduce((a, l) => a + this.lengthCm(l), 0); }
-  toJSON() { return this.lines.map((l) => (l.type === 'curve' ? { id: l.id, type: 'curve', pts: l.pts.map((p) => [...p]) } : { id: l.id, surf: l.surf, a: [...l.a], b: [...l.b] })); }
+  toJSON() { return this.lines.map((l) => (l.type === 'curve' || l.type === 'arc' ? { id: l.id, type: l.type, pts: l.pts.map((p) => [...p]) } : { id: l.id, surf: l.surf, a: [...l.a], b: [...l.b] })); }
 
   // ------------------------------------------------------------ curves (printed rails): pts = [[x, y, h], ...] plan cm
-  curveOf(l) { return new THREE.CatmullRomCurve3(l.pts.map((p) => new THREE.Vector3(p[0] * CM, p[2] * CM, p[1] * CM)), false, 'centripetal'); }
+  curveOf(l) {
+    if (l.type === 'arc') return arcCurve(...l.pts.map((p) => new THREE.Vector3(p[0] * CM, p[2] * CM, p[1] * CM)));
+    return new THREE.CatmullRomCurve3(l.pts.map((p) => new THREE.Vector3(p[0] * CM, p[2] * CM, p[1] * CM)), false, 'centripetal');
+  }
+  arcInfo(l) { const c = this.curveOf(l); return { radiusCm: c.radius / CM, angleDeg: (c.sweep * 180) / Math.PI }; }
   // square section swept along the curve; hollow = printable channel (outer 17, wall `wallMm`) in mm for export
   curveGeometry(l, { mm = false, hollow = false, wallMm = 2 } = {}) {
     const sz = (this.pcfg.sizeCm ?? 1.7) * CM, k = mm ? 1000 : 1;
@@ -268,7 +278,7 @@ export class Grid {
       const i = h - (wallMm / 1000) * k;
       shape.holes.push(new THREE.Path([new THREE.Vector2(-i, -i), new THREE.Vector2(-i, i), new THREE.Vector2(i, i), new THREE.Vector2(i, -i)]));
     }
-    const path = mm ? new THREE.CatmullRomCurve3(curve.points.map((p) => p.clone().multiplyScalar(1000)), false, 'centripetal') : curve;
+    const path = !mm ? curve : l.type === 'arc' ? arcCurve(...l.pts.map((p) => new THREE.Vector3(p[0] * 10, p[2] * 10, p[1] * 10))) : new THREE.CatmullRomCurve3(curve.points.map((p) => p.clone().multiplyScalar(1000)), false, 'centripetal');
     const steps = Math.max(8, Math.round(curve.getLength() / 0.01));
     return new THREE.ExtrudeGeometry(shape, { steps, bevelEnabled: false, extrudePath: path });
   }
@@ -289,7 +299,7 @@ export class Grid {
   junctions(tolCm = 1.5) {
     const ends = [];
     for (const l of this.lines) {
-      if (l.type === 'curve') {
+      if (l.type === 'curve' || l.type === 'arc') {
         const c = this.curveOf(l), n = l.pts.length;
         for (const [t, i] of [[0, 0], [1, n - 1]]) {
           const P = c.getPointAt(t), T = c.getTangentAt(t).multiplyScalar(t === 0 ? 1 : -1);
@@ -314,4 +324,29 @@ export class Grid {
         back: a.surf === 'AIR' ? null : (() => { const N = this.surfNormal(a.surf); return [-N.x, -N.z, -N.y]; })() })),
     }));
   }
+}
+
+// circular arc through 3 points (start, a point on the arc, end) in 3D; collinear points -> straight segment
+export function arcCurve(A, M, Bp) {
+  const a = A.clone().sub(M), b = Bp.clone().sub(M);
+  const axb = new THREE.Vector3().crossVectors(a, b);
+  const d = 2 * axb.lengthSq();
+  const c = new THREE.Curve();
+  if (d < 1e-12) {
+    c.getPoint = (t, o = new THREE.Vector3()) => o.copy(A).lerp(Bp, t);
+    c.radius = Infinity; c.sweep = 0;
+    return c;
+  }
+  // circumcentre
+  const C = M.clone().add(new THREE.Vector3().crossVectors(axb, a).multiplyScalar(b.lengthSq()).add(new THREE.Vector3().crossVectors(b, axb).multiplyScalar(a.lengthSq())).divideScalar(d));
+  const r = C.distanceTo(A);
+  const n = axb.clone().normalize().negate(); // A -> M -> B runs counter-clockwise around n
+  const u = A.clone().sub(C).normalize(), v = new THREE.Vector3().crossVectors(n, u);
+  const ang = (P) => { const q = P.clone().sub(C); let t = Math.atan2(q.dot(v), q.dot(u)); if (t < 0) t += 2 * Math.PI; return t; };
+  let sweep = ang(Bp);
+  if (ang(M) > sweep) sweep = sweep - 2 * Math.PI; // M must lie between A and B: go the other way round
+  c.getPoint = (t, o = new THREE.Vector3()) => { const th = sweep * t; return o.copy(C).addScaledVector(u, r * Math.cos(th)).addScaledVector(v, r * Math.sin(th)); };
+  c.radius = r; c.sweep = Math.abs(sweep);
+  c.arcLengthDivisions = 400;
+  return c;
 }

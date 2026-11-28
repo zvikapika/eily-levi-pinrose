@@ -286,34 +286,35 @@ export function buildUI(app) {
     const s = section('Grid lines — 17×17 white profile', true);
     const info = h('div', { class: 'info' });
     const drawBtn = h('button', { class: 'hi', onclick: () => app.setDraw(!(app.draw.on && app.draw.kind === 'line'), 'line') }, '✎ Draw lines (L)');
-    const curveBtn = h('button', { class: 'hi', onclick: () => app.setDraw(!(app.draw.on && app.draw.kind === 'curve'), 'curve') }, '〰 Draw curve (C)');
+    const curveBtn = h('button', { class: 'hi', onclick: () => app.setDraw(!(app.draw.on && app.draw.kind === 'arc'), 'arc') }, '◠ Draw arc (C)');
     ui.setDrawState = (on) => {
       const k = app.draw.kind;
       drawBtn.textContent = on && k === 'line' ? '■ Stop drawing (Esc)' : '✎ Draw lines (L)';
-      curveBtn.textContent = on && k === 'curve' ? '■ Finish curve (Enter)' : '〰 Draw curve (C)';
+      curveBtn.textContent = on && k === 'arc' ? '■ Stop arcs (Esc)' : '◠ Draw arc (C)';
     };
     const sel = h('div', { class: 'props' });
     const surfName = (id) => (id === 'FLOOR' ? 'Floor' : id === 'CEIL' ? 'Ceiling' : id);
     const refresh = () => {
       const byS = {};
-      for (const l of grid.lines) { const k = l.type === 'curve' ? 'curves' : l.surf === 'AIR' ? '3D' : surfName(l.surf); byS[k] = (byS[k] ?? 0) + grid.lengthCm(l); }
+      for (const l of grid.lines) { const k = l.type === 'curve' || l.type === 'arc' ? 'arcs' : l.surf === 'AIR' ? '3D' : surfName(l.surf); byS[k] = (byS[k] ?? 0) + grid.lengthCm(l); }
       info.innerHTML = `<b>${grid.lines.length}</b> lines · total profile <b>${(grid.totalLengthCm() / 100).toFixed(1)} m</b><br>` +
         `<span class="dim">${Object.entries(byS).map(([k, v]) => `${k} ${(v / 100).toFixed(1)} m`).join(' · ') || 'no lines yet'}</span>`;
       sel.innerHTML = '';
       const l = grid.lines.find((x) => x.id === grid.selected);
       if (!l) { sel.append(h('div', { class: 'help' }, 'Click a line (drawing off) to select it · Delete key removes it')); return; }
       const upd = () => { grid.buildLines(); app.editProfiles(); };
-      if (l.type === 'curve') {
+      if (l.type === 'curve' || l.type === 'arc') {
         const sz = grid.curveSizeCm(l);
+        const ai = l.type === 'arc' ? grid.arcInfo(l) : null;
         const fits = sz.every((v) => v <= 21);
         const wall = h('input', { type: 'number', class: 'num', value: 2, min: 1, max: 6, step: 0.2 });
         sel.append(
-          h('div', { class: 'sub' }, `Curve ${l.id} · ${l.pts.length} points · ${grid.lengthCm(l).toFixed(0)} cm long`),
+          h('div', { class: 'sub' }, ai ? `Arc ${l.id} · radius ${ai.radiusCm.toFixed(1)} cm · ${ai.angleDeg.toFixed(0)}° · ${grid.lengthCm(l).toFixed(0)} cm long` : `Curve ${l.id} · ${l.pts.length} points · ${grid.lengthCm(l).toFixed(0)} cm long`),
           h('div', { class: fits ? 'help' : 'help warn' }, `Size ${sz.map((v) => v.toFixed(0)).join(' × ')} cm — ${fits ? 'fits the Ultimaker 2+ bed (22 × 22 × 20 cm)' : 'TOO BIG for one print on the Ultimaker 2+: split it into shorter curves'}`),
           h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Channel wall'), wall, h('span', { class: 'unit' }, 'mm')),
           h('div', { class: 'btns' },
-            h('button', { class: 'hi', onclick: () => app.exportCurve(l.id, +wall.value) }, '⬇ Export this curve for printing (STL)'),
-            h('button', { onclick: () => app.deleteSelectedLine() }, 'Delete curve')));
+            h('button', { class: 'hi', onclick: () => app.exportCurve(l.id, +wall.value) }, `⬇ Export this ${ai ? 'arc' : 'curve'} for printing (STL)`),
+            h('button', { onclick: () => app.deleteSelectedLine() }, ai ? 'Delete arc' : 'Delete curve')));
         return;
       }
       if (l.surf === 'AIR') {
@@ -345,7 +346,7 @@ export function buildUI(app) {
         h('button', { onclick: () => { if (!confirm('Remove all grid lines?')) return; grid.setLines([]); app.editProfiles(); } }, 'Clear all'),
         h('button', { onclick: () => { grid.setLines(grid.defaultLines()); app.editProfiles(); }, title: 'The wall grid that continues the ceiling grid: each ceiling-grid line becomes a vertical line where it meets a wall, joined to the ceiling grid by a short ceiling line' }, 'Wall grid from ceiling grid'),
       ),
-      h('div', { class: 'help' }, 'Lines: click on a wall or the floor to start, click again to end — the line continues from there (a path). Click the same point twice or Esc to stop. Shift = straight. End a line on another wall / the floor and it goes straight through the space (3D line); set its heights exactly when it is selected. Curves (C): click the points the curve passes through, Enter or Esc to finish; select a curve to export it for 3D printing as a hollow channel. Ends snap to unit tips and to other line ends.'),
+      h('div', { class: 'help' }, 'Lines: click on a wall or the floor to start, click again to end — the line continues from there (a path). Click the same point twice or Esc to stop. Shift = straight. End a line on another wall / the floor and it goes straight through the space (3D line); set its heights exactly when it is selected. Arcs (C): click the start, click the end, then move the mouse to bend the arc and click — like SketchUp. Select an arc to see its radius and export it for 3D printing as a hollow channel. Ends snap to unit tips and to other line ends.'),
       h('label', { class: 'row' }, h('span', { class: 'lbl' }, 'Snap step'), step, h('span', { class: 'unit' }, 'cm')),
       h('label', { class: 'row chk' }, su, ' Snap line ends to unit tips (wire exit)'),
       h('label', { class: 'row chk' }, pv, ' Show grid lines'),

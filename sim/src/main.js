@@ -265,7 +265,7 @@ function editProfiles() {
 }
 // ---- drawing grid lines on walls / floor
 function setDraw(on, kind = app.draw.kind ?? 'line') {
-  if (!on && app.draw.curve) finishCurve();
+  if (!on && app.draw.curve && app.draw.kind === 'curve') finishCurve();
   app.draw.on = on;
   app.draw.kind = kind;
   app.draw.start = null;
@@ -328,7 +328,7 @@ function drawPoint(e) {
   const w = grid.toWorld(hit.surf, uv);
   // snap to the end of a 3D line / curve nearby (those don't belong to a surface)
   for (const l of grid.lines) {
-    const pts = l.type === 'curve' ? [l.pts[0], l.pts[l.pts.length - 1]].map((q) => grid.toWorld('AIR', q)) : l.surf === 'AIR' ? [l.a, l.b].map((q) => grid.toWorld('AIR', q)) : [];
+    const pts = l.type === 'curve' || l.type === 'arc' ? [l.pts[0], l.pts[l.pts.length - 1]].map((q) => grid.toWorld('AIR', q)) : l.surf === 'AIR' ? [l.a, l.b].map((q) => grid.toWorld('AIR', q)) : [];
     for (const q of pts) if (q.distanceTo(w) < 0.08) return { surf: 'AIR', uv: grid.toSurf('AIR', q), w: q, air: true };
   }
   return { surf: hit.surf, uv, w };
@@ -342,6 +342,21 @@ function finishCurve() {
 function drawClick(e) {
   const pt = drawPoint(e);
   if (!pt) return toast('Click on a wall, the floor or the end of a line', true);
+  if (app.draw.kind === 'arc') {
+    // SketchUp-style: click the start, click the end, then move to bend the arc and click to fix it
+    const c = (app.draw.curve ??= []);
+    const q = air(pt);
+    if (c.length < 2) {
+      if (c.length === 1 && Math.hypot(q[0] - c[0][0], q[1] - c[0][1], q[2] - c[0][2]) < 2) return; // end on the start: ignore
+      c.push(q); app.draw.start = pt;
+      if (c.length === 2) toast('Now move to bend the arc and click');
+      return;
+    }
+    grid.lines.push({ id: grid.newId(), type: 'arc', pts: [c[0], q, c[1]] });
+    app.draw.curve = null; app.draw.start = null; grid.setPreview(null);
+    editProfiles();
+    return;
+  }
   if (app.draw.kind === 'curve') {
     const c = (app.draw.curve ??= []);
     const q = air(pt);
@@ -365,6 +380,12 @@ function drawMove(e) {
   const pt = drawPoint(e);
   if (!pt) { grid.setPreview(null); return; }
   if (app.draw.kind === 'curve') { grid.setPreview({ id: 'preview', type: 'curve', pts: [...app.draw.curve, air(pt)] }); return; }
+  if (app.draw.kind === 'arc') {
+    const c = app.draw.curve ?? [], q = air(pt);
+    if (c.length === 1) grid.setPreview({ id: 'preview', surf: 'AIR', a: c[0], b: q });
+    else if (c.length === 2) grid.setPreview({ id: 'preview', type: 'arc', pts: [c[0], q, c[1]] });
+    return;
+  }
   grid.setPreview(st.surf === pt.surf && !pt.air ? { id: 'preview', surf: st.surf, a: st.uv, b: pt.uv } : { id: 'preview', surf: 'AIR', a: air(st), b: air(pt) });
 }
 function pickLine(x, y) {
@@ -381,10 +402,15 @@ function saveBlob(name, data, type) {
 }
 // a printable curved rail: hollow square channel (outer = profile size), mm, Z up, lying on the bed
 function exportCurve(id, wallMm = 2) {
-  const l = grid.lines.find((x) => x.id === id && x.type === 'curve');
+  const l = grid.lines.find((x) => x.id === id && (x.type === 'curve' || x.type === 'arc'));
   if (!l) return toast('Select a curve first', true);
   const g = grid.curveGeometry(l, { mm: true, hollow: true, wallMm });
-  g.applyMatrix4(new THREE.Matrix4().makeRotationX(Math.PI / 2)); // Y up -> Z up
+  if (l.type === 'arc') {
+    // lay the arc flat on the bed: its plane -> XY
+    const [A, M, B] = l.pts.map((p) => new THREE.Vector3(p[0], p[2], p[1]));
+    const n = new THREE.Vector3().crossVectors(A.clone().sub(M), B.clone().sub(M));
+    if (n.lengthSq() > 1e-9) g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(n.normalize(), new THREE.Vector3(0, 0, 1)));
+  } else g.applyMatrix4(new THREE.Matrix4().makeRotationX(Math.PI / 2)); // Y up -> Z up
   g.computeBoundingBox();
   const bb = g.boundingBox;
   g.translate(-(bb.min.x + bb.max.x) / 2, -(bb.min.y + bb.max.y) / 2, -bb.min.z);
@@ -482,9 +508,9 @@ addEventListener('keydown', (e) => {
     if (app.mode === 'wall' && (e.code === 'BracketLeft' || e.code === 'PageUp')) stepWall(-1);
     if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA') { e.preventDefault(); select([...units.units.keys()]); }
     if (e.code === 'KeyL') setDraw(!(app.draw.on && app.draw.kind === 'line'), 'line');
-    if (e.code === 'KeyC' && !(e.ctrlKey || e.metaKey)) setDraw(!(app.draw.on && app.draw.kind === 'curve'), 'curve');
-    if ((e.code === 'Enter' || e.code === 'NumpadEnter') && app.draw.curve) finishCurve();
-    if (e.code === 'Escape' && app.draw.on) { if (app.draw.curve) finishCurve(); else if (app.draw.start) { app.draw.start = null; grid.setPreview(null); } else setDraw(false); }
+    if ((e.code === 'KeyC' || e.code === 'KeyA' && e.altKey) && !(e.ctrlKey || e.metaKey)) setDraw(!(app.draw.on && app.draw.kind === 'arc'), 'arc');
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter') && app.draw.curve && app.draw.kind === 'curve') finishCurve();
+    if (e.code === 'Escape' && app.draw.on) { if (app.draw.curve && app.draw.kind === 'arc') { app.draw.curve = null; app.draw.start = null; grid.setPreview(null); } else if (app.draw.curve) finishCurve(); else if (app.draw.start) { app.draw.start = null; grid.setPreview(null); } else setDraw(false); }
     if ((e.code === 'Delete' || e.code === 'Backspace') && grid.selected) { e.preventDefault(); deleteSelectedLine(); }
   }
 });

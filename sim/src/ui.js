@@ -67,11 +67,19 @@ export function buildUI(app) {
     };
     const ceil = h('input', { type: 'checkbox', onchange: (e) => app.setCeiling(e.target.checked) });
     ui.ceiling = ceil;
+    const tone = numRow('Wall tone', { min: 0.2, max: 1, step: 0.01, value: room.wallTone, onChange: (v) => { room.setWallTone(v); app.autosave(); } });
+    ui.wallTone = tone;
     s.body.append(bar, wallRow, help,
       h('label', { class: 'row chk' }, ceil, ' Ceiling (auto in walk mode)'),
       h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => (app.cutaway = e.target.checked) }), ' Cutaway: see through walls facing away (overview)'),
       h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => app.setUnitDots(e.target.checked) }), ' Locator dots behind units (overview)'),
       h('label', { class: 'row chk' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => app.setLabels(e.target.checked) }), ' Wall names (overview + plan) — click a name to see that wall from the front'),
+      tone.row,
+      h('div', { class: 'btns' },
+        h('button', { onclick: () => { room.setWallTone(1); tone.set(1); app.autosave(); } }, 'Walls light'),
+        h('button', { onclick: () => { room.setWallTone(0.7); tone.set(0.7); app.autosave(); } }, 'Walls a bit darker'),
+        h('button', { onclick: () => { room.setWallTone(0.45); tone.set(0.45); app.autosave(); } }, 'Walls dark')),
+      h('div', { class: 'help' }, 'Darker walls make the white rails and the units stand out. Only the look changes — the wall colour itself stays.'),
     );
     panel.append(s.el);
   }
@@ -391,7 +399,7 @@ export function buildUI(app) {
     const amb = numRow('Global fill', { min: 0, max: 2, step: 0.01, value: lighting.ambient.intensity, onChange: (v) => lighting.setAmbient(v) });
     const exp = numRow('Exposure', { min: 0.2, max: 2.5, step: 0.01, value: lighting.exposure, onChange: (v) => lighting.setExposure(v) });
     const sh = h('input', { type: 'checkbox', checked: lighting.shadows, onchange: (e) => lighting.setShadows(e.target.checked) });
-    const wc = h('input', { type: 'color', value: '#' + room.wallMat.color.getHexString(), oninput: (e) => { room.wallMat.color.set(e.target.value); room.excludedMat.color.set(e.target.value).multiplyScalar(0.94); } });
+    const wc = h('input', { type: 'color', value: '#' + room.wallBase.getHexString(), oninput: (e) => { room.setWallColour(e.target.value); app.autosave(); } });
     const fc = h('input', { type: 'color', value: '#' + room.floorMat.color.getHexString(), oninput: (e) => room.floorMat.color.set(e.target.value) });
     const spotsBox = h('div', {});
     ui.lighting = { amb, exp, sh, wc, fc };
@@ -452,6 +460,48 @@ export function buildUI(app) {
 
   // ---------------------------------------------------------------- layout I/O
   {
+    // ---- versions: several named versions of the space, kept in this browser (+ download as a file to keep for sure)
+    {
+      const vs = section('Versions of the space', true);
+      const KEY = 'pinrose.versions';
+      const all = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; } };
+      const put = (o) => localStorage.setItem(KEY, JSON.stringify(o));
+      const name = h('input', { type: 'text', placeholder: 'Version name (e.g. "Inner space dense")', class: 'txt' });
+      const list = h('div', { class: 'props' });
+      const stamp = (t) => new Date(t).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' });
+      const render = () => {
+        list.innerHTML = '';
+        const o = all();
+        const names = Object.keys(o).sort((a, b) => o[b].saved - o[a].saved);
+        if (!names.length) list.append(h('div', { class: 'help' }, 'No versions yet.'));
+        for (const n of names) {
+          const v = o[n];
+          list.append(h('div', { class: 'ver' },
+            h('div', { class: 'vname' }, h('b', {}, n), h('span', { class: 'unit' }, ` · ${stamp(v.saved)} · ${v.units} units`)),
+            h('div', { class: 'btns' },
+              h('button', { class: 'hi', onclick: () => { try { app.loadLayout(parseLayout(v.json)); app.toast(`Opened "${n}"`); } catch (err) { app.toast('Open failed: ' + err.message, true); } } }, 'Open'),
+              h('button', { onclick: () => { if (!confirm(`Replace "${n}" with the space as it is now?`)) return; const o2 = all(); o2[n] = { saved: Date.now(), units: app.units.units.length, json: layoutToJSON(app) }; put(o2); render(); app.toast(`"${n}" updated`); } }, 'Update'),
+              h('button', { onclick: () => download(`pinrose-${n.replace(/[^\w\u0590-\u05ff-]+/g, '_')}.json`, v.json, 'application/json') }, '⬇ File'),
+              h('button', { onclick: () => { if (!confirm(`Delete "${n}"?`)) return; const o2 = all(); delete o2[n]; put(o2); render(); } }, '✕'))));
+        }
+      };
+      const save = () => {
+        const n = name.value.trim() || `Version ${Object.keys(all()).length + 1}`;
+        const o = all();
+        if (o[n] && !confirm(`"${n}" exists — replace it?`)) return;
+        o[n] = { saved: Date.now(), units: app.units.units.length, json: layoutToJSON(app) };
+        try { put(o); } catch (err) { return app.toast('Could not save (browser storage full?) — use ⬇ File', true); }
+        name.value = ''; render(); app.toast(`Saved "${n}"`);
+      };
+      name.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+      render();
+      vs.body.append(
+        h('div', { class: 'row' }, name),
+        h('div', { class: 'btns' }, h('button', { class: 'hi', onclick: save }, '💾 Save this version')),
+        list,
+        h('div', { class: 'help' }, 'A version keeps everything: units, rails and curves, partitions, lights, wall tone, sockets / window. Versions live in this browser on this computer — "⬇ File" keeps a copy you can open anywhere (Layout → Load file).'));
+      panel.append(vs.el);
+    }
     const s = section('Layout', false);
     const seed = h('input', { type: 'number', class: 'num', value: app.seed });
     const count = h('input', { type: 'number', class: 'num', value: GEN_DEFAULTS.count, min: 1, max: 240 });

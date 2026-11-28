@@ -136,7 +136,8 @@ export class Lighting {
       ambient: this.ambient.intensity,
       exposure: this.exposure,
       shadows: this.shadows,
-      wallColor: '#' + this.room.wallMat.color.getHexString(),
+      wallColor: '#' + this.room.wallBase.getHexString(),
+      wallTone: this.room.wallTone,
       floorColor: '#' + this.room.floorMat.color.getHexString(),
       spots: this.spots.map((s) => ({ ...s.p })),
       zones: JSON.parse(JSON.stringify(this.zones)),
@@ -149,7 +150,8 @@ export class Lighting {
     if (d.ambient !== undefined && (d.version ?? 0) >= 3) this.setAmbient(d.ambient);
     if (d.fill !== undefined) this.setFill(d.fill);
     if (d.exposure !== undefined) this.setExposure(d.exposure);
-    if (d.wallColor) { this.room.wallMat.color.set(d.wallColor); this.room.excludedMat.color.set(d.wallColor).multiplyScalar(0.94); }
+    if (d.wallColor) this.room.setWallColour(d.wallColor);
+    this.room.setWallTone(d.wallTone ?? 1);
     if (d.floorColor) this.room.floorMat.color.set(d.floorColor);
     if (d.zones) for (const k of Object.keys(this.zones)) Object.assign(this.zones[k], d.zones[k] ?? {});
     if (Array.isArray(d.spots)) this.setSpots(d.spots);

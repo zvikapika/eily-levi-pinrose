@@ -180,6 +180,7 @@ function loadLayout(d) {
   const L = lighting.toJSON();
   ui.lighting.amb.set(L.ambient); ui.lighting.exp.set(L.exposure); ui.lighting.sh.checked = L.shadows;
   ui.lighting.wc.value = L.wallColor; ui.lighting.fc.value = L.floorColor;
+  ui.wallTone?.set(room.wallTone);
   setUnits(d.units);
   room.setOverlayVisible(app.mode === 'plan');
 }

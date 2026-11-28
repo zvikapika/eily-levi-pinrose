@@ -50,3 +50,6 @@ button.mini { padding: 0 5px; margin-left: 6px; font-size: 10px; line-height: 16
 .wall-label.glass { background: rgba(86,204,242,.9); color: #10303a; }
 .row.chk.big { font-size: 13.5px; padding: 3px 0; }
 .help.warn { color: #ff8a3d; }
+.txt { width: 100%; background: #1d2026; color: #eee; border: 1px solid #3a3f48; border-radius: 4px; padding: 5px 7px; font: inherit; }
+.ver { border-top: 1px solid #2c3038; padding: 6px 0 2px; }
+.ver .vname { margin-bottom: 3px; }

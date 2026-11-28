@@ -18,6 +18,8 @@ export class Room {
     this.group = new THREE.Group();
     this.group.name = 'room';
     this.wallMat = new THREE.MeshStandardMaterial({ color: 0xf2f0ea, roughness: 0.92, metalness: 0 });
+    this.wallBase = new THREE.Color(0xf2f0ea); // picked colour; wallTone darkens it to make the white rails / units stand out
+    this.wallTone = 1;
     this.excludedMat = new THREE.MeshStandardMaterial({ color: 0xe6e3dc, roughness: 0.92 });
     this.floorMat = new THREE.MeshStandardMaterial({ color: 0x8d8a85, roughness: 0.8 });
     this.ceilMat = new THREE.MeshStandardMaterial({ color: 0xdedbd5, roughness: 1, side: THREE.DoubleSide });
@@ -142,6 +144,13 @@ export class Room {
     this.ceiling.visible = this._ceilingVisible ?? false;
     this.group.add(this.ceiling);
     this.buildPlanOverlay();
+  }
+
+  setWallColour(hex) { this.wallBase.set(hex); this.applyWallTone(); }
+  setWallTone(t) { this.wallTone = Math.max(0.2, Math.min(1, t)); this.applyWallTone(); }
+  applyWallTone() {
+    this.wallMat.color.copy(this.wallBase).multiplyScalar(this.wallTone);
+    this.excludedMat?.color.copy(this.wallBase).multiplyScalar(this.wallTone * 0.94);
   }
 
   // dark skirting on every solid wall face (photos)
